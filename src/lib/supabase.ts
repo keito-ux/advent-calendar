@@ -22,6 +22,22 @@ export async function uploadImage(file: File) {
   return data.publicUrl
 }
 
+// GLBモデルアップロード関数
+export async function uploadModel(file: File) {
+  const filePath = `models/${Date.now()}-${file.name}`
+  const { error } = await supabase.storage
+    .from('advent.pics')
+    .upload(filePath, file)
+
+  if (error) {
+    alert('アップロード失敗: ' + error.message)
+    return null
+  }
+
+  const { data } = supabase.storage.from('advent.pics').getPublicUrl(filePath)
+  return data.publicUrl
+}
+
 // データベースに保存
 export async function saveScene(
   day: number,

@@ -1,54 +1,51 @@
 import { useEffect, useState } from 'react';
 import { CalendarDay } from './CalendarDay';
 import { supabase } from '../lib/supabase';
-import type { Scene } from '../lib/types';
-import { Sparkles, Snowflake, Gift } from 'lucide-react';
+import type { UserCalendarDay } from '../lib/types';
+import { Sparkles, Snowflake, Gift, Upload } from 'lucide-react';
 import ThreeViewer from './ThreeViewer';
+import UploadScene from './UploadScene';
 
 interface CalendarGridProps {
-  onSceneClick: (dayNumber: number, scene: Scene | null) => void;
+  calendarId: string;
+  onSceneClick: (dayNumber: number, sceneId: string, calendarId: string) => void;
   modelUrl1: string;
   modelUrl2: string;
 }
 
-export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGridProps) {
-  const [scenes, setScenes] = useState<Scene[]>([]);
+export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }: CalendarGridProps) {
+  const [scenes, setScenes] = useState<UserCalendarDay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [calendarTitle, setCalendarTitle] = useState<string>('');
 
   useEffect(() => {
-    loadScenes();
-  }, []);
+    loadCalendar();
+  }, [calendarId]);
 
-  async function loadScenes() {
+  async function loadCalendar() {
     try {
-      const { data, error } = await supabase
-        .from('advent_calendar')
-        .select('*')
-        .order('day_number', { ascending: true });
+      const [calendarRes, scenesRes] = await Promise.all([
+        supabase
+          .from('user_calendars')
+          .select('*')
+          .eq('id', calendarId)
+          .single(),
+        supabase
+          .from('user_calendar_days')
+          .select('*')
+          .eq('calendar_id', calendarId)
+          .order('day_number', { ascending: true })
+      ]);
 
-      if (error) throw error;
-      setScenes(data || []);
+      if (calendarRes.error) throw calendarRes.error;
+      if (scenesRes.error) throw scenesRes.error;
+
+      setCalendarTitle(calendarRes.data.title);
+      setScenes(scenesRes.data || []);
     } catch (error) {
-      console.error('Error loading scenes:', error);
+      console.error('Error loading calendar:', error);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function unlockDay(dayNumber: number) {
-    try {
-      const scene = getSceneForDay(dayNumber);
-      if (scene && !scene.is_unlocked) {
-        const { error } = await supabase
-          .from('advent_calendar')
-          .update({ is_unlocked: true })
-          .eq('id', scene.id);
-
-        if (error) throw error;
-        await loadScenes();
-      }
-    } catch (error) {
-      console.error('Error unlocking day:', error);
     }
   }
 
@@ -61,7 +58,10 @@ export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGri
   function isDayUnlocked(dayNumber: number): boolean {
     const scene = getSceneForDay(dayNumber);
     if (!scene) return false;
-    return scene.is_unlocked;
+    const unlockDate = getDayUnlockDate(dayNumber);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return unlockDate.getTime() <= today.getTime();
   }
 
   function isDayToday(dayNumber: number): boolean {
@@ -71,7 +71,7 @@ export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGri
     return unlockDate.getTime() === today.getTime();
   }
 
-  function getSceneForDay(dayNumber: number): Scene | null {
+  function getSceneForDay(dayNumber: number): UserCalendarDay | null {
     return scenes.find(s => s.day_number === dayNumber) || null;
   }
 
@@ -82,8 +82,8 @@ export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGri
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Gift className="w-12 h-12 text-rose-200 animate-bounce mx-auto mb-4" />
-          <p className="text-white text-lg">Loading Christmas magic...</p>
+          <Gift className="w-12 h-12 text-amber-400 animate-bounce mx-auto mb-4" />
+          <p className="text-white text-lg">Loading calendar magic...</p>
         </div>
       </div>
     );
@@ -127,31 +127,31 @@ export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGri
       <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 relative z-10">
         <header className="text-center mb-8 md:mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Gift className="w-8 h-8 md:w-10 md:h-10 text-emerald-200 animate-bounce" />
+            <Gift className="w-8 h-8 md:w-10 md:h-10 text-amber-400 animate-bounce" />
             <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-2xl" style={{ fontFamily: 'serif', textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-              🎄 Christmas Advent Calendar 🎄
+              {calendarTitle || '🎄 Advent Calendar 🎄'}
             </h1>
-            <Gift className="w-8 h-8 md:w-10 md:h-10 text-rose-200 animate-bounce" style={{ animationDelay: '0.2s' }} />
+            <Gift className="w-8 h-8 md:w-10 md:h-10 text-rose-400 animate-bounce" style={{ animationDelay: '0.2s' }} />
           </div>
           <p className="text-lg md:text-xl text-white max-w-2xl mx-auto mb-6 drop-shadow-lg">
-            ✨ 25 Days of Christmas Magic ✨
+            ✨ 25 Days of Magic ✨
           </p>
 
-          <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto">
+          <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto mb-6">
             <ThreeViewer
               modelUrl={modelUrl1}
               className="w-48 h-48"
             />
-            <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-2xl px-6 md:px-8 py-4 md:py-5 border-3 border-emerald-400 relative">
+            <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-2xl px-6 md:px-8 py-4 md:py-5 border-3 border-amber-400 relative">
               <div className="absolute -top-1 -left-1 w-3 h-3 bg-white rounded-full" />
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full" />
               <div className="absolute -bottom-1 -left-1 w-3 h-3 bg-white rounded-full" />
               <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-white rounded-full" />
               <div className="flex items-center gap-3">
-                <Sparkles className="w-6 h-6 md:w-8 md:h-8 text-emerald-600 animate-pulse" />
+                <Sparkles className="w-6 h-6 md:w-8 md:h-8 text-amber-600 animate-pulse" />
                 <div className="text-left">
                   <p className="text-sm md:text-base text-slate-600 font-medium">Days Unlocked</p>
-                  <p className="text-2xl md:text-3xl font-bold text-emerald-700">{unlockedCount} / 25</p>
+                  <p className="text-2xl md:text-3xl font-bold text-amber-700">{unlockedCount} / 25</p>
                 </div>
               </div>
             </div>
@@ -159,6 +159,10 @@ export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGri
               modelUrl={modelUrl2}
               className="w-48 h-48"
             />
+          </div>
+
+          <div className="flex justify-center">
+            <UploadScene calendarId={calendarId} onSuccess={loadCalendar} />
           </div>
         </header>
 
@@ -180,14 +184,9 @@ export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGri
                   scene={scene}
                   isUnlocked={isUnlocked}
                   isToday={isToday}
-                  onClick={async () => {
-                    const scene = getSceneForDay(dayNumber);
-                    if (scene && !isUnlocked) {
-                      await unlockDay(dayNumber);
-                    }
-                    const updatedScene = getSceneForDay(dayNumber);
-                    if (updatedScene) {
-                      onSceneClick(dayNumber, updatedScene);
+                  onClick={() => {
+                    if (scene && isUnlocked) {
+                      onSceneClick(dayNumber, scene.id, calendarId);
                     }
                   }}
                 />
@@ -198,7 +197,7 @@ export function CalendarGrid({ onSceneClick, modelUrl1, modelUrl2 }: CalendarGri
 
         <div className="text-center mt-8">
           <p className="text-white text-sm md:text-base drop-shadow-lg font-medium">
-            🎅 Merry Christmas! Open a new surprise every day! 🎁
+            🎅 Open a new surprise every day! 🎁
           </p>
         </div>
       </div>

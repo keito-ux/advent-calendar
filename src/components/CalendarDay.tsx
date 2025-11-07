@@ -1,9 +1,9 @@
 import { Lock, Gift, Star } from 'lucide-react';
-import type { Scene } from '../lib/types';
+import type { UserCalendarDay } from '../lib/types';
 
 interface CalendarDayProps {
   dayNumber: number;
-  scene: Scene | null;
+  scene: UserCalendarDay | null;
   isUnlocked: boolean;
   isToday: boolean;
   onClick: () => void;
