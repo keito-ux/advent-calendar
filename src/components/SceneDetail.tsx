@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import type { UserCalendarDay, UserCalendar, Profile } from '../lib/types';
 import { LikeButton } from './LikeButton';
 import { CommentBox } from './CommentBox';
-import EnhancedThreeViewer from './EnhancedThreeViewer';
+// EnhancedThreeViewer is commented out for future use
+// import EnhancedThreeViewer from './EnhancedThreeViewer';
 
 interface SceneDetailProps {
   dayNumber: number;
@@ -15,7 +16,7 @@ interface SceneDetailProps {
 
 export function SceneDetail({ dayNumber, sceneId, calendarId, onClose }: SceneDetailProps) {
   const [scene, setScene] = useState<UserCalendarDay | null>(null);
-  const [calendar, setCalendar] = useState<UserCalendar | null>(null);
+  const [_calendar, setCalendar] = useState<UserCalendar | null>(null);
   const [creatorProfile, setCreatorProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export function SceneDetail({ dayNumber, sceneId, calendarId, onClose }: SceneDe
       const [sceneRes, calendarRes] = await Promise.all([
         supabase
           .from('user_calendar_days')
-          .select('*')
+          .select('id, calendar_id, day_number, title, image_url, like_count, price, currency, created_at, updated_at')
           .eq('id', sceneId)
           .single(),
         supabase
@@ -80,7 +81,8 @@ export function SceneDetail({ dayNumber, sceneId, calendarId, onClose }: SceneDe
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-gradient-to-br from-slate-800 via-navy-900 to-slate-950 rounded-3xl max-w-5xl w-full max-h-[95vh] overflow-y-auto shadow-2xl border border-white/20" onClick={(e) => e.stopPropagation()}>
         <div className="relative">
-          {scene.model_url ? (
+          {/* model_urlは削除: テーブルに存在しないカラム */}
+          {/* {scene.model_url ? (
             <div className="w-full h-80 md:h-[500px] bg-gradient-to-br from-slate-900 to-navy-900">
               <EnhancedThreeViewer
                 modelUrl={scene.model_url}
@@ -89,7 +91,7 @@ export function SceneDetail({ dayNumber, sceneId, calendarId, onClose }: SceneDe
                 enableZoom={true}
               />
             </div>
-          ) : scene.image_url ? (
+          ) : */} {scene.image_url ? (
             <img
               src={scene.image_url}
               alt={scene.title || `Day ${dayNumber}`}
@@ -124,13 +126,14 @@ export function SceneDetail({ dayNumber, sceneId, calendarId, onClose }: SceneDe
             <CommentBox sceneId={sceneId} userId={userId} />
           </div>
 
-          {scene.message && (
+          {/* messageは削除: テーブルに存在しないカラム */}
+          {/* {scene.message && (
             <div className="prose max-w-none">
               <p className="text-lg text-white/90 leading-relaxed">
                 {scene.message}
               </p>
             </div>
-          )}
+          )} */}
 
           {creatorProfile && (
             <div className="border-t border-white/20 pt-6 mt-6">

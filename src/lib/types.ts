@@ -170,9 +170,9 @@ export type Database = {
           calendar_id: string;
           day_number: number;
           title: string | null;
-          message: string | null;
+          // message: string | null; // 削除: テーブルに存在しないカラム
           image_url: string | null;
-          model_url: string | null;
+          // model_url: string | null; // 削除: テーブルに存在しないカラム
           like_count: number;
           price: number | null;
           currency: string | null;
@@ -184,9 +184,9 @@ export type Database = {
           calendar_id: string;
           day_number: number;
           title?: string | null;
-          message?: string | null;
+          // message?: string | null; // 削除: テーブルに存在しないカラム
           image_url?: string | null;
-          model_url?: string | null;
+          // model_url?: string | null; // 削除: テーブルに存在しないカラム
           like_count?: number;
           price?: number | null;
           currency?: string | null;
@@ -198,9 +198,9 @@ export type Database = {
           calendar_id?: string;
           day_number?: number;
           title?: string | null;
-          message?: string | null;
+          // message?: string | null; // 削除: テーブルに存在しないカラム
           image_url?: string | null;
-          model_url?: string | null;
+          // model_url?: string | null; // 削除: テーブルに存在しないカラム
           like_count?: number;
           price?: number | null;
           currency?: string | null;

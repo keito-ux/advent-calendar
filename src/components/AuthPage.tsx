@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import { supabase } from '../lib/supabase'
 
 type AuthMode = 'signin' | 'signup'
 

@@ -38,34 +38,45 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
 
   async function loadCalendar() {
     try {
-      const [calendarRes, scenesRes] = await Promise.all([
-        supabase
-          .from('user_calendars')
-          .select('*')
-          .eq('id', calendarId)
-          .single(),
-        supabase
-          .from('user_calendar_days')
-          .select('*')
-          .eq('calendar_id', calendarId)
-          .order('day_number', { ascending: true })
-      ]);
+      // まずカレンダー情報を取得
+      const { data: calendar, error: calendarError } = await supabase
+        .from('user_calendars')
+        .select('*')
+        .eq('id', calendarId)
+        .single();
 
-      if (calendarRes.error) throw calendarRes.error;
-      if (scenesRes.error) throw scenesRes.error;
+      if (calendarError) {
+        console.error('Supabase error:', calendarError.message);
+        console.error('Error details:', calendarError);
+        throw calendarError;
+      }
 
-      // 現在のユーザーのカレンダーの場合のみフィルタ（オプション）
-      // 公開カレンダーの場合は全員が見られる
-      const calendar = calendarRes.data;
+      if (!calendar) {
+        throw new Error('Calendar not found');
+      }
+
       setCalendarTitle(calendar.title);
-      
+
+      // user_idベースでuser_calendar_daysを取得
+      const { data: scenesData, error: scenesError } = await supabase
+        .from('user_calendar_days')
+        .select('*')
+        .eq('user_id', calendar.creator_id)
+        .order('day_number', { ascending: true });
+
+      if (scenesError) {
+        console.error('Supabase error:', scenesError.message);
+        console.error('Error details:', scenesError);
+        throw scenesError;
+      }
+
       // カレンダーが現在のユーザーのものか、または公開されている場合のみ表示
       if (currentUserId && calendar.creator_id === currentUserId) {
         // 自分のカレンダー: すべて表示
-        setScenes(scenesRes.data || []);
+        setScenes(scenesData || []);
       } else if (calendar.is_public) {
         // 公開カレンダー: すべて表示
-        setScenes(scenesRes.data || []);
+        setScenes(scenesData || []);
       } else {
         // 非公開の他人のカレンダー: 空
         setScenes([]);

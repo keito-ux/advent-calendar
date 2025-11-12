@@ -1,7 +1,7 @@
+
 import { useState, useEffect } from 'react';
-import { Upload, Image, Box, X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { uploadImage, uploadModel } from '../lib/supabase';
+import { Upload, Image, X } from 'lucide-react';
+import { supabase, uploadImage } from '../lib/supabase';
 import type { UserCalendarDay } from '../lib/types';
 
 interface UploadSceneProps {
@@ -14,59 +14,39 @@ interface UploadSceneProps {
   existingScene?: UserCalendarDay | null;
 }
 
-export default function UploadScene({ calendarId, userId, onSuccess, initialDay, isOpen: externalIsOpen, onClose: externalOnClose, existingScene }: UploadSceneProps) {
+export default function UploadScene({
+  calendarId,
+  userId,
+  onSuccess,
+  initialDay,
+  isOpen: externalIsOpen,
+  onClose: externalOnClose,
+  existingScene,
+}: UploadSceneProps) {
   const [day, setDay] = useState(initialDay || 1);
   const [title, setTitle] = useState('');
-  const [message, setMessage] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [modelFile, setModelFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const [initialTitle, setInitialTitle] = useState('');
-  const [initialMessage, setInitialMessage] = useState('');
-
-  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
-
-  const handleClose = () => {
-    if (externalOnClose) {
-      externalOnClose();
-    } else {
-      setInternalIsOpen(false);
-    }
-    setTitle('');
-    setMessage('');
-    setImageFile(null);
-    setModelFile(null);
-    setInitialTitle('');
-    setInitialMessage('');
-  };
+  const isOpen = externalIsOpen ?? internalIsOpen;
 
   useEffect(() => {
     loadCurrentUser();
   }, []);
 
   useEffect(() => {
-    if (initialDay) {
-      setDay(initialDay);
-    }
+    if (initialDay) setDay(initialDay);
   }, [initialDay]);
 
   useEffect(() => {
     if (existingScene) {
-      setInitialTitle(existingScene.title || '');
-      setInitialMessage(existingScene.message || '');
       setTitle(existingScene.title || '');
-      setMessage(existingScene.message || '');
     } else {
-      setInitialTitle('');
-      setInitialMessage('');
       setTitle('');
-      setMessage('');
     }
     setImageFile(null);
-    setModelFile(null);
   }, [existingScene, isOpen]);
 
   async function loadCurrentUser() {
@@ -77,132 +57,101 @@ export default function UploadScene({ calendarId, userId, onSuccess, initialDay,
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    const hasExistingAsset = Boolean(existingScene?.image_url || existingScene?.model_url);
-    if (!imageFile && !modelFile && !hasExistingAsset) {
-      alert('Please select an image or 3D model');
+    // 画像または既存の画像URLが必要
+    if (!imageFile && !existingScene?.image_url) {
+      alert('画像を選択してください');
       return;
     }
-
     if (!title.trim()) {
-      alert('Please enter a title');
+      alert('タイトルを入力してください');
       return;
     }
-
-    if (!calendarId && !userId) {
-      alert('Please select a calendar first');
-      return;
-    }
-
     if (!currentUserId) {
-      alert('Please sign in to upload scenes');
+      alert('サインインしてください');
       return;
     }
-
-    if (userId && userId !== currentUserId) {
-      alert('You can only upload to your own calendar');
+    if (!calendarId) {
+      alert('カレンダーIDが必要です');
       return;
-    }
-
-    if (calendarId) {
-      const { data: calendar, error: calendarError } = await supabase
-        .from('user_calendars')
-        .select('creator_id')
-        .eq('id', calendarId)
-        .single();
-
-      if (calendarError || !calendar) {
-        alert('Calendar not found');
-        return;
-      }
-
-      if (calendar.creator_id !== currentUserId) {
-        alert('You can only upload to your own calendar');
-        return;
-      }
     }
 
     setUploading(true);
     try {
-      let imageUrl: string | null = existingScene?.image_url || null;
-      let modelUrl: string | null = existingScene?.model_url || null;
+      let imageUrl = existingScene?.image_url || null;
 
+      // 1️⃣ 新しい画像が選択された場合、Supabase Storageにアップロード
       if (imageFile) {
-        console.log('Uploading image file:', imageFile.name, imageFile.size);
-        imageUrl = await uploadImage(imageFile);
+        console.log('📤 Starting image upload process...');
+        
+        // calendarIdとdayNumberを渡して、ユーザー要求の形式でファイルパスを生成
+        imageUrl = await uploadImage(imageFile, currentUserId, calendarId, day);
+        
         if (!imageUrl) {
-          console.error('Image upload failed');
-          setUploading(false);
-          return;
+          throw new Error('画像のアップロードに失敗しました');
         }
-        console.log('Image uploaded successfully:', imageUrl);
+        
+        console.log('✅ Image uploaded successfully to Storage');
+        console.log('✅ Image URL:', imageUrl);
+      } else if (existingScene?.image_url) {
+        // 既存の画像URLを使用
+        imageUrl = existingScene.image_url;
+        console.log('📋 Using existing image URL:', imageUrl);
       }
 
-      if (modelFile) {
-        console.log('Uploading model file:', modelFile.name, modelFile.size);
-        modelUrl = await uploadModel(modelFile);
-        if (!modelUrl) {
-          console.error('Model upload failed');
-          setUploading(false);
-          return;
-        }
-        console.log('Model uploaded successfully:', modelUrl);
-      }
-
-      if (!imageUrl && !modelUrl) {
-        alert('Please upload at least an image or a 3D model');
-        setUploading(false);
-        return;
-      }
-
-      if (!calendarId) {
-        alert('Calendar ID is required');
-        setUploading(false);
-        return;
-      }
-
-      const payload: Record<string, any> = {
+      // 2️⃣ user_calendar_daysテーブルに保存（新規作成または更新）
+      const payload = {
         calendar_id: calendarId,
         day_number: day,
         title: title.trim(),
-        message: message.trim() || null,
         image_url: imageUrl,
-        model_url: modelUrl,
       };
 
-      // Save to user_calendar_days
-      const { error } = await supabase
+      console.log('💾 Saving to user_calendar_days:', {
+        calendar_id: calendarId,
+        day_number: day,
+        title: title.trim(),
+        image_url: imageUrl ? '✅ Set' : '❌ Not set',
+      });
+
+      const { data, error } = await supabase
         .from('user_calendar_days')
-        .upsert(payload, { onConflict: 'calendar_id,day_number' });
+        .upsert(payload, { onConflict: 'calendar_id,day_number' })
+        .select();
 
       if (error) {
-        console.error('=== Database Save Error ===');
-        console.error('Error Code:', error.code);
-        console.error('Error Message:', error.message);
-        console.error('Error Details:', error);
-        console.error('Table: user_calendar_days');
-        console.error('Calendar ID:', calendarId);
-        console.error('Day Number:', day);
-        console.error('==========================');
-        throw error;
+        console.error('❌ DB save error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error);
+        throw new Error('データベースへの保存に失敗しました: ' + error.message);
       }
 
-      console.log('✅ Scene saved to database successfully');
-      alert('🎉 Scene uploaded successfully!');
+      console.log('✅ Successfully saved to user_calendar_days:', data);
+      console.log('✅ Record ID:', data?.[0]?.id);
+      
+      alert('🎉 アップロード成功！');
       setTitle('');
-      setMessage('');
       setImageFile(null);
-      setModelFile(null);
-      setInitialTitle('');
-      setInitialMessage('');
       handleClose();
+      
+      // 3️⃣ 成功コールバックを呼び出し（親コンポーネントでデータを再読み込み）
       onSuccess?.();
-    } catch (error: any) {
-      console.error('Error uploading scene:', error);
-      alert('Failed to upload scene: ' + (error.message || 'Unknown error'));
+    } catch (err: any) {
+      console.error('❌ Upload error:', err);
+      console.error('Error type:', typeof err);
+      console.error('Error message:', err?.message);
+      alert('アップロードに失敗しました: ' + (err.message || 'Unknown error'));
     } finally {
       setUploading(false);
     }
   }
+
+  const handleClose = () => {
+    if (externalOnClose) externalOnClose();
+    else setInternalIsOpen(false);
+    setTitle('');
+    setImageFile(null);
+  };
 
   return (
     <>
@@ -220,7 +169,9 @@ export default function UploadScene({ calendarId, userId, onSuccess, initialDay,
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-slate-800 to-navy-900 rounded-xl p-6 max-w-md w-full border border-white/20 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-white">{existingScene ? `Edit Scene for Day ${day}` : `Upload Scene for Day ${day}`}</h2>
+              <h2 className="text-2xl font-bold text-white">
+                {existingScene ? `Edit Day ${day}` : `Upload for Day ${day}`}
+              </h2>
               <button
                 onClick={handleClose}
                 className="text-white/60 hover:text-white transition-colors"
@@ -231,7 +182,9 @@ export default function UploadScene({ calendarId, userId, onSuccess, initialDay,
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Day (1–25) *</label>
+                <label className="block text-sm font-semibold mb-2 text-white">
+                  Day (1–25) *
+                </label>
                 <input
                   type="number"
                   min="1"
@@ -244,7 +197,9 @@ export default function UploadScene({ calendarId, userId, onSuccess, initialDay,
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Title *</label>
+                <label className="block text-sm font-semibold mb-2 text-white">
+                  Title *
+                </label>
                 <input
                   type="text"
                   value={title}
@@ -255,20 +210,9 @@ export default function UploadScene({ calendarId, userId, onSuccess, initialDay,
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2 text-white">Message</label>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  rows={3}
-                  placeholder="Optional message..."
-                />
-              </div>
-
-              <div>
                 <label className="block text-sm font-semibold mb-2 text-white flex items-center gap-2">
                   <Image className="w-4 h-4" />
-                  Image {existingScene?.image_url ? '(leave empty to keep current image)' : ''}
+                  Image
                 </label>
                 <input
                   type="file"
@@ -276,34 +220,15 @@ export default function UploadScene({ calendarId, userId, onSuccess, initialDay,
                   onChange={(e) => setImageFile(e.target.files?.[0] || null)}
                   className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-400 file:text-white hover:file:bg-amber-500"
                 />
-                {existingScene?.image_url && !imageFile && (
-                  <p className="text-white/60 text-sm mt-1">Current image will be kept</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-white flex items-center gap-2">
-                  <Box className="w-4 h-4" />
-                  3D Model (GLB) {existingScene?.model_url ? '(leave empty to keep current model)' : ''}
-                </label>
-                <input
-                  type="file"
-                  accept=".glb,.gltf"
-                  onChange={(e) => setModelFile(e.target.files?.[0] || null)}
-                  className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-rose-500 file:text-white hover:file:bg-rose-600"
-                />
-                {existingScene?.model_url && !modelFile && (
-                  <p className="text-white/60 text-sm mt-1">Current model will be kept</p>
-                )}
               </div>
 
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
                   disabled={uploading}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-amber-400 to-rose-500 text-white rounded-lg hover:from-amber-500 hover:to-rose-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold"
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-amber-400 to-rose-500 text-white rounded-lg hover:from-amber-500 hover:to-rose-600 disabled:opacity-50 transition-all font-semibold"
                 >
-                  {uploading ? 'Uploading...' : existingScene ? 'Update Scene' : 'Upload Scene'}
+                  {uploading ? 'Uploading...' : 'Upload'}
                 </button>
                 <button
                   type="button"

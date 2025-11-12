@@ -4,10 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ✅ 本番環境用の厳格なCSP（開発環境ではvite.config.tsのserver.headersが優先される） -->
+    <!-- frame-ancestorsはサーバー側のヘッダーで設定 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cxhpdgmlnfumkxwsyopq.supabase.co https://raw.githack.com https://raw.githubusercontent.com https://pmndrs.github.io https://*.supabase.co https://*.githubusercontent.com; font-src 'self'; connect-src 'self' blob: data: https://cxhpdgmlnfumkxwsyopq.supabase.co https://raw.githack.com https://raw.githubusercontent.com https://pmndrs.github.io https://*.supabase.co https://*.githubusercontent.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self';" />
     <title>Picture Book Advent Calendar</title>
   </head>
   <body>
     <div id="root"></div>
+    <!-- ✅ 外部スクリプトのみ使用（インラインスクリプトなし） -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

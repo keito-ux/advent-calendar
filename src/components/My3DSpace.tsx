@@ -15,6 +15,21 @@ interface StorageModel {
 
 // Ground plane for clicking
 function Ground({ onPlaneClick }: { onPlaneClick: (point: THREE.Vector3) => void }) {
+  const geometryRef = useRef<THREE.PlaneGeometry | null>(null);
+  const materialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // クリーンアップ
+      if (geometryRef.current) {
+        geometryRef.current.dispose();
+      }
+      if (materialRef.current) {
+        materialRef.current.dispose();
+      }
+    };
+  }, []);
+
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
@@ -24,10 +39,38 @@ function Ground({ onPlaneClick }: { onPlaneClick: (point: THREE.Vector3) => void
         onPlaneClick(e.point);
       }}
     >
-      <planeGeometry args={[100, 100]} />
-      <meshBasicMaterial transparent opacity={0} />
+      <planeGeometry ref={geometryRef} args={[100, 100]} />
+      <meshBasicMaterial ref={materialRef} transparent opacity={0} />
     </mesh>
   );
+}
+
+// Renderer設定コンポーネント
+function RendererConfig() {
+  const { gl } = useThree();
+
+  useEffect(() => {
+    // WebGL Context Lostイベントのハンドリング
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      console.warn('WebGL Context Lost');
+    };
+
+    const handleContextRestored = () => {
+      console.log('WebGL Context Restored');
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('webglcontextlost', handleContextLost);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored);
+
+    return () => {
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+    };
+  }, [gl]);
+
+  return null;
 }
 
 interface My3DSpaceProps {
@@ -39,13 +82,49 @@ interface My3DSpaceProps {
 function PlacedModel({ placement, isSelected, onSelect }: { placement: User3DPlacement; isSelected: boolean; onSelect: () => void }) {
   const { scene } = useGLTF(placement.model_url);
   const meshRef = useRef<THREE.Group>(null);
-  const clonedScene = scene.clone();
+  const clonedScene = useRef<THREE.Group | null>(null);
+  const selectionBoxRef = useRef<THREE.Mesh | null>(null);
+  const selectionGeometryRef = useRef<THREE.BoxGeometry | null>(null);
+  const selectionMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+
+  useEffect(() => {
+    clonedScene.current = scene.clone();
+    return () => {
+      // クリーンアップ: geometryとmaterialをdispose
+      if (clonedScene.current) {
+        clonedScene.current.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            if (child.geometry) {
+              child.geometry.dispose();
+            }
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          }
+        });
+      }
+      if (selectionGeometryRef.current) {
+        selectionGeometryRef.current.dispose();
+      }
+      if (selectionMaterialRef.current) {
+        selectionMaterialRef.current.dispose();
+      }
+    };
+  }, [scene]);
 
   useFrame(() => {
     if (meshRef.current && !isSelected) {
       meshRef.current.rotation.y += 0.005;
     }
   });
+
+  if (!clonedScene.current) {
+    return null;
+  }
 
   return (
     <group
@@ -58,11 +137,11 @@ function PlacedModel({ placement, isSelected, onSelect }: { placement: User3DPla
         onSelect();
       }}
     >
-      <primitive object={clonedScene} />
+      <primitive object={clonedScene.current} />
       {isSelected && (
-        <mesh>
-          <boxGeometry args={[2, 2, 2]} />
-          <meshBasicMaterial color="yellow" transparent opacity={0.3} wireframe />
+        <mesh ref={selectionBoxRef}>
+          <boxGeometry ref={selectionGeometryRef} args={[2, 2, 2]} />
+          <meshBasicMaterial ref={selectionMaterialRef} color="yellow" transparent opacity={0.3} wireframe />
         </mesh>
       )}
     </group>
@@ -73,13 +152,49 @@ function PlacedModel({ placement, isSelected, onSelect }: { placement: User3DPla
 function NewModel({ modelUrl, position, onPlace }: { modelUrl: string; position: [number, number, number]; onPlace: () => void }) {
   const { scene } = useGLTF(modelUrl);
   const meshRef = useRef<THREE.Group>(null);
-  const clonedScene = scene.clone();
+  const clonedScene = useRef<THREE.Group | null>(null);
+  const previewBoxRef = useRef<THREE.Mesh | null>(null);
+  const previewGeometryRef = useRef<THREE.BoxGeometry | null>(null);
+  const previewMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+
+  useEffect(() => {
+    clonedScene.current = scene.clone();
+    return () => {
+      // クリーンアップ: geometryとmaterialをdispose
+      if (clonedScene.current) {
+        clonedScene.current.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            if (child.geometry) {
+              child.geometry.dispose();
+            }
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          }
+        });
+      }
+      if (previewGeometryRef.current) {
+        previewGeometryRef.current.dispose();
+      }
+      if (previewMaterialRef.current) {
+        previewMaterialRef.current.dispose();
+      }
+    };
+  }, [scene]);
 
   useFrame(() => {
     if (meshRef.current) {
       meshRef.current.rotation.y += 0.01;
     }
   });
+
+  if (!clonedScene.current) {
+    return null;
+  }
 
   return (
     <group
@@ -90,10 +205,10 @@ function NewModel({ modelUrl, position, onPlace }: { modelUrl: string; position:
         onPlace();
       }}
     >
-      <primitive object={clonedScene} />
-      <mesh>
-        <boxGeometry args={[2, 2, 2]} />
-        <meshBasicMaterial color="cyan" transparent opacity={0.3} wireframe />
+      <primitive object={clonedScene.current} />
+      <mesh ref={previewBoxRef}>
+        <boxGeometry ref={previewGeometryRef} args={[2, 2, 2]} />
+        <meshBasicMaterial ref={previewMaterialRef} color="cyan" transparent opacity={0.3} wireframe />
       </mesh>
     </group>
   );
@@ -109,18 +224,38 @@ export function My3DSpace({ userId, onClose }: My3DSpaceProps) {
   const [loadingStorageModels, setLoadingStorageModels] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [previewModelUrl, setPreviewModelUrl] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const userIdRef = useRef(userId);
 
   useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
+    // 依存配列を空にして、マウント時のみ実行
     loadPlacements();
     loadStorageModels();
-  }, [userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // コンポーネントのクリーンアップ時にDOMからcanvasを削除
+    return () => {
+      if (containerRef.current) {
+        const canvas = containerRef.current.querySelector('canvas');
+        if (canvas && canvas.parentNode) {
+          canvas.parentNode.removeChild(canvas);
+        }
+      }
+    };
+  }, []);
 
   async function loadPlacements() {
     try {
       const { data, error } = await supabase
         .from('user_3d_placements')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', userIdRef.current)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -185,7 +320,7 @@ export function My3DSpace({ userId, onClose }: My3DSpaceProps) {
       const { data, error } = await supabase
         .from('user_3d_placements')
         .insert({
-          user_id: userId,
+          user_id: userIdRef.current,
           model_url: selectedModelUrl,
           position_x: newModelPosition[0],
           position_y: newModelPosition[1],
@@ -289,10 +424,19 @@ export function My3DSpace({ userId, onClose }: My3DSpaceProps) {
         </div>
       </div>
 
-      <div className="flex-1 mt-20">
+      <div ref={containerRef} className="flex-1 mt-20">
         <Canvas
           camera={{ position: [5, 5, 5], fov: 50 }}
+          gl={{
+            antialias: false,
+            powerPreference: 'low-power',
+            preserveDrawingBuffer: false,
+          }}
+          onCreated={({ gl }) => {
+            gl.shadowMap.enabled = false;
+          }}
         >
+          <RendererConfig />
           <PerspectiveCamera makeDefault position={[5, 5, 5]} />
           <ambientLight intensity={0.6} />
           <directionalLight position={[10, 10, 5]} intensity={1} />

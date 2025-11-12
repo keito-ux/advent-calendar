@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { X, Twitter, Instagram, Globe, Calendar, Heart } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { Profile, UserCalendar } from '../lib/types';
+import type { Profile, UserCalendar, UserCalendarDay } from '../lib/types';
+
+interface CalendarWithLikes extends UserCalendar {
+  totalLikes: number;
+  daysCount: number;
+}
 
 interface UserProfileProps {
   userId: string;
@@ -11,7 +16,7 @@ interface UserProfileProps {
 
 export function UserProfile({ userId, onClose, onCalendarClick }: UserProfileProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [calendars, setCalendars] = useState<UserCalendar[]>([]);
+  const [calendars, setCalendars] = useState<CalendarWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,7 +42,57 @@ export function UserProfile({ userId, onClose, onCalendarClick }: UserProfilePro
       if (calendarsRes.error) throw calendarsRes.error;
 
       setProfile(profileRes.data);
-      setCalendars(calendarsRes.data || []);
+
+      // 各カレンダーのいいね数と日数を取得
+      const calendarsWithLikes = await Promise.all(
+        (calendarsRes.data || []).map(async (calendar) => {
+          // カレンダーの日付データを取得（calendar_idでフィルタリング）
+          const { data: daysData, error: daysError } = await supabase
+            .from('user_calendar_days')
+            .select('id, like_count')
+            .eq('calendar_id', calendar.id);
+
+          if (daysError) {
+            console.error('Error loading calendar days:', daysError);
+            // calendar_idが存在しない場合はuser_idで試す
+            const { data: daysDataByUser, error: daysErrorByUser } = await supabase
+              .from('user_calendar_days')
+              .select('id, like_count')
+              .eq('user_id', userId);
+
+            if (daysErrorByUser) {
+              console.error('Error loading calendar days by user_id:', daysErrorByUser);
+              return {
+                ...calendar,
+                totalLikes: 0,
+                daysCount: 0,
+              };
+            }
+
+            // いいね数の合計を計算
+            const totalLikes = (daysDataByUser || []).reduce((sum, day) => sum + (day.like_count || 0), 0);
+            const daysCount = daysDataByUser?.length || 0;
+
+            return {
+              ...calendar,
+              totalLikes,
+              daysCount,
+            };
+          }
+
+          // いいね数の合計を計算
+          const totalLikes = (daysData || []).reduce((sum, day) => sum + (day.like_count || 0), 0);
+          const daysCount = daysData?.length || 0;
+
+          return {
+            ...calendar,
+            totalLikes,
+            daysCount,
+          };
+        })
+      );
+
+      setCalendars(calendarsWithLikes);
     } catch (error) {
       console.error('Error loading user profile:', error);
     } finally {
@@ -145,6 +200,13 @@ export function UserProfile({ userId, onClose, onCalendarClick }: UserProfilePro
                   <p className="text-sm text-white/60">Calendars Created</p>
                   <p className="text-2xl font-bold text-amber-400">{calendars.length}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-white/60">Total Likes</p>
+                  <p className="text-2xl font-bold text-rose-400 flex items-center gap-1">
+                    <Heart className="w-5 h-5 fill-rose-400" />
+                    {calendars.reduce((sum, cal) => sum + cal.totalLikes, 0)}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -169,6 +231,16 @@ export function UserProfile({ userId, onClose, onCalendarClick }: UserProfilePro
                         {calendar.description}
                       </p>
                     )}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 text-rose-400">
+                        <Heart className="w-4 h-4 fill-rose-400" />
+                        <span className="text-sm font-semibold">{calendar.totalLikes}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-white/60 text-xs">
+                        <Calendar className="w-3 h-3" />
+                        <span>{calendar.daysCount} days</span>
+                      </div>
+                    </div>
                     <div className="flex items-center justify-between text-xs text-white/60">
                       <span>{calendar.is_public ? 'Public' : 'Private'}</span>
                       <span>{new Date(calendar.created_at).toLocaleDateString()}</span>

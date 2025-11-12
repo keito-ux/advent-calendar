@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { CalendarDay } from './CalendarDay';
 import { supabase } from '../lib/supabase';
-import type { UserCalendarDay } from '../lib/types';
-import { Sparkles, Snowflake, Gift } from 'lucide-react';
+import type { UserCalendarDay, UserCalendar } from '../lib/types';
+import { Sparkles, Snowflake, Gift, Pencil, Check, X } from 'lucide-react';
 import ThreeViewer from './ThreeViewer';
 import UploadScene from './UploadScene';
+import { ThemeSelector, themes, type ThemeType } from './ThemeSelector';
 
 interface MyCalendarProps {
   userId: string;
@@ -15,45 +16,254 @@ interface MyCalendarProps {
 
 export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, modelUrl2 }: MyCalendarProps) {
   const [scenes, setScenes] = useState<UserCalendarDay[]>([]);
+  const [calendar, setCalendar] = useState<UserCalendar | null>(null);
   const [loading, setLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [currentTheme, setCurrentTheme] = useState<ThemeType>('classic');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState('');
+  
+  // ✅ 無限再レンダリングを防ぐためのref
+  const userIdRef = useRef<string | null>(null);
+  const hasLoadedRef = useRef(false);
+  const renderCountRef = useRef(0);
 
+  // ✅ useEffectを空の依存配列にして、初回のみ実行
   useEffect(() => {
-    loadScenes();
-  }, [userId]);
+    // userIdが変更された場合のみ再読み込み
+    if (userIdRef.current !== userId) {
+      userIdRef.current = userId;
+      hasLoadedRef.current = false;
+    }
+    
+    // 初回のみ読み込み
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadScenes();
+    }
+  }, []); // 空の依存配列
 
-  // user_calendar_daysからデータを取得（calendar_id経由）
+  // ✅ デフォルトの12月アドベントカレンダー（1〜25日）を作成
+  async function createDefaultCalendarDays(calendarId: string) {
+    try {
+      // 既存の日付データを確認（calendar_idベース）
+      const { data: existingDays } = await supabase
+        .from('user_calendar_days')
+        .select('day_number')
+        .eq('calendar_id', calendarId);
+
+      const existingDayNumbers = new Set((existingDays || []).map(d => d.day_number));
+
+      // 1〜25日のデフォルトデータを作成（存在しない日のみ）
+      const defaultDays = Array.from({ length: 25 }, (_, i) => i + 1)
+        .filter(dayNumber => !existingDayNumbers.has(dayNumber))
+        .map(dayNumber => ({
+          calendar_id: calendarId,
+          day_number: dayNumber,
+          title: null,
+          image_url: null,
+        }));
+
+      if (defaultDays.length > 0) {
+        const { error: insertError } = await supabase
+          .from('user_calendar_days')
+          .insert(defaultDays);
+
+        if (insertError) {
+          console.error('Error creating default calendar days:', insertError);
+          console.error('Error details:', insertError);
+        } else {
+          console.log(`✅ Created ${defaultDays.length} default calendar days (December 1-25)`);
+        }
+      } else {
+        console.log('✅ All 25 calendar days already exist');
+      }
+    } catch (error) {
+      console.error('Error creating default calendar days:', error);
+    }
+  }
+
+  // user_calendar_daysからデータを取得（user_id経由）
   async function loadScenes() {
+    const currentUserId = userIdRef.current || userId;
+    if (!currentUserId) return;
+    
     setLoading(true);
     try {
-      // まずユーザーのカレンダーを取得
-      const { data: calendars, error: calendarsError } = await supabase
+      // まずユーザーのカレンダーを取得（なければ作成）
+      const currentUserId = userIdRef.current || userId;
+      let { data: calendars, error: calendarsError } = await supabase
         .from('user_calendars')
-        .select('id')
-        .eq('creator_id', userId)
+        .select('*')
+        .eq('creator_id', currentUserId)
         .limit(1);
 
-      if (calendarsError) throw calendarsError;
-
-      if (!calendars || calendars.length === 0) {
-        setScenes([]);
+      if (calendarsError) {
+        console.error('Error loading calendars:', calendarsError);
+        // エラー時でもデフォルトカレンダーを設定して続行
+        // ✅ 条件付きでsetStateを実行（ループを防ぐ）
+        const defaultCalendar = {
+          id: 'default',
+          creator_id: currentUserId,
+          title: 'My Advent Calendar',
+          description: null,
+          share_code: '',
+          is_public: false,
+          username: null,
+          theme: 'classic',
+          background_image: null,
+          price: null,
+          currency: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as UserCalendar;
+        
+        if (!calendar || calendar.id !== 'default') {
+          setCalendar(defaultCalendar);
+        }
+        if (currentTheme !== 'classic') {
+          setCurrentTheme('classic');
+        }
+        if (scenes.length > 0) {
+          setScenes([]);
+        }
+        setLoading(false);
         return;
       }
 
-      const calendarId = calendars[0].id;
+      let currentCalendar: UserCalendar;
 
-      // カレンダーの日付データを取得
+      if (!calendars || calendars.length === 0) {
+        // カレンダーが存在しない場合は作成
+        const { data: newCalendar, error: createError } = await supabase
+          .from('user_calendars')
+          .insert({
+            creator_id: currentUserId,
+            title: 'My Advent Calendar',
+            is_public: false,
+            theme: 'classic',
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating calendar:', createError);
+          // エラー時でもデフォルトカレンダーを設定して続行
+          const defaultCalendar = {
+            id: 'default',
+            creator_id: userId,
+            title: 'My Advent Calendar',
+            description: null,
+            share_code: '',
+            is_public: false,
+            username: null,
+            theme: 'classic',
+            background_image: null,
+            price: null,
+            currency: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as UserCalendar;
+          setCalendar(defaultCalendar);
+          setCurrentTheme('classic');
+          currentCalendar = defaultCalendar;
+        } else {
+          currentCalendar = newCalendar;
+          // ✅ 条件付きでsetStateを実行
+          if (!calendar || calendar.id !== currentCalendar.id) {
+            setCalendar(currentCalendar);
+          }
+          const newTheme = (currentCalendar.theme as ThemeType) || 'classic';
+          if (currentTheme !== newTheme) {
+            setCurrentTheme(newTheme);
+          }
+          
+          // ✅ カレンダー作成時に、12月のアドベントカレンダー（1〜25日）をデフォルトで作成
+          await createDefaultCalendarDays(currentCalendar.id);
+        }
+      } else {
+        currentCalendar = calendars[0];
+        // ✅ 条件付きでsetStateを実行
+        if (!calendar || calendar.id !== currentCalendar.id) {
+          setCalendar(currentCalendar);
+        }
+        const newTheme = (currentCalendar.theme as ThemeType) || 'classic';
+        if (currentTheme !== newTheme) {
+          setCurrentTheme(newTheme);
+        }
+      }
+
+      // currentCalendarが設定されている場合のみ日付データを取得
+      if (!currentCalendar || currentCalendar.id === 'default') {
+        setScenes([]);
+        setLoading(false);
+        return;
+      }
+
+      // カレンダーの日付データを取得（calendar_idベース）
+      // model_urlとmessageを削除して必要なカラムのみ取得
       const { data, error } = await supabase
         .from('user_calendar_days')
-        .select('*')
-        .eq('calendar_id', calendarId)
+        .select('id, calendar_id, day_number, title, image_url')
+        .eq('calendar_id', currentCalendar.id)
         .order('day_number', { ascending: true });
 
-      if (error) throw error;
-      setScenes(data || []);
+      if (error) {
+        console.error('Supabase error:', error.message);
+        console.error('Error details:', error);
+        // エラー時でも空配列を設定して続行
+        setScenes([]);
+      } else {
+        // model_urlとmessageを除外したデータを型アサーションで設定
+        const scenesData = (data || []) as unknown as UserCalendarDay[];
+        
+        // ✅ 既存のカレンダーでも、日付データが25日分ない場合はデフォルトデータを作成
+        if (scenesData.length < 25) {
+          console.log(`⚠️ Only ${scenesData.length} days found, creating default days...`);
+          await createDefaultCalendarDays(currentCalendar.id);
+          // デフォルトデータ作成後、再度データを取得
+          const { data: updatedData } = await supabase
+            .from('user_calendar_days')
+            .select('id, calendar_id, day_number, title, image_url')
+            .eq('calendar_id', currentCalendar.id)
+            .order('day_number', { ascending: true });
+          if (updatedData) {
+            const updatedScenes = (updatedData || []) as unknown as UserCalendarDay[];
+            // ✅ 条件付きでsetStateを実行
+            if (JSON.stringify(scenes) !== JSON.stringify(updatedScenes)) {
+              setScenes(updatedScenes);
+            }
+          }
+        } else {
+          // ✅ 条件付きでsetStateを実行
+          if (JSON.stringify(scenes) !== JSON.stringify(scenesData)) {
+            setScenes(scenesData);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error loading scenes:', error);
+      // エラー時でもデフォルト値を設定して続行
+      if (!calendar) {
+        setCalendar({
+          id: 'default',
+          creator_id: userId,
+          title: 'My Advent Calendar',
+          description: null,
+          share_code: '',
+          is_public: false,
+          username: null,
+          theme: 'classic',
+          background_image: null,
+          price: null,
+          currency: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as UserCalendar);
+        setCurrentTheme('classic');
+      }
+      setScenes([]);
     } finally {
       setLoading(false);
     }
@@ -63,15 +273,6 @@ export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, mod
     const date = new Date(2025, 11, dayNumber);
     date.setHours(0, 0, 0, 0);
     return date;
-  }
-
-  function isDayUnlocked(dayNumber: number): boolean {
-    const scene = getSceneForDay(dayNumber);
-    if (scene) return true; // データがあればアンロック済み
-    const unlockDate = getDayUnlockDate(dayNumber);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return unlockDate.getTime() <= today.getTime();
   }
 
   function isDayToday(dayNumber: number): boolean {
@@ -85,22 +286,57 @@ export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, mod
     return scenes.find(s => s.day_number === dayNumber) || null;
   }
 
-  const days = Array.from({ length: 25 }, (_, i) => i + 1);
-  const postedCount = scenes.length;
+  async function handleTitleSave() {
+    if (!calendar || !editingTitle.trim()) {
+      setIsEditingTitle(false);
+      return;
+    }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <Gift className="w-12 h-12 text-amber-400 animate-bounce mx-auto mb-4" />
-          <p className="text-white text-lg">Loading your calendar...</p>
-        </div>
-      </div>
-    );
+    try {
+      const { error } = await supabase
+        .from('user_calendars')
+        .update({ title: editingTitle.trim() })
+        .eq('id', calendar.id);
+
+      if (error) {
+        console.error('Error updating title:', error);
+        alert('タイトルの更新に失敗しました');
+      } else {
+        setCalendar({ ...calendar, title: editingTitle.trim() });
+        setIsEditingTitle(false);
+      }
+    } catch (error) {
+      console.error('Error updating title:', error);
+      alert('タイトルの更新に失敗しました');
+    }
   }
 
+  function handleTitleEdit() {
+    if (calendar) {
+      setEditingTitle(calendar.title || 'My Advent Calendar');
+      setIsEditingTitle(true);
+    }
+  }
+
+  function handleTitleCancel() {
+    setIsEditingTitle(false);
+    setEditingTitle('');
+  }
+
+  // 日付はWebアプリ上で直接生成（Supabaseに依存しない）- 必ず1〜25を表示
+  const days = Array.from({ length: 25 }, (_, i) => i + 1);
+  const postedCount = scenes.length;
+  const themeData = themes.find(t => t.id === currentTheme) || themes[0];
+
+  // ✅ レンダリング回数をカウント（1回だけ表示）
+  renderCountRef.current += 1;
+  if (renderCountRef.current === 1) {
+    console.log('Rendering MyCalendar (first render)');
+  }
+
+  // ローディング中でもカレンダーを表示（データがなくても1〜25の日付は表示）
   return (
-    <div className="relative overflow-hidden">
+    <div className={`min-h-screen bg-slate-900 text-white relative overflow-hidden bg-gradient-to-br ${themeData.colors.background}`}>
       {/* 雪のアニメーション */}
       <div className="absolute inset-0 pointer-events-none">
         {[...Array(120)].map((_, i) => {
@@ -140,13 +376,71 @@ export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, mod
         <header className="text-center mb-8 md:mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <Gift className="w-8 h-8 md:w-10 md:h-10 text-amber-400 animate-bounce" />
-            <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-2xl" style={{ fontFamily: 'serif', textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-              🎄 My Advent Calendar 🎄
-            </h1>
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <label htmlFor="calendar-title-input" className="sr-only">カレンダータイトル</label>
+                <input
+                  id="calendar-title-input"
+                  name="calendar-title"
+                  type="text"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  className="text-4xl md:text-6xl font-bold text-white bg-white/20 backdrop-blur-sm border-2 border-white/50 rounded-lg px-4 py-2 focus:outline-none focus:border-amber-400"
+                  style={{ fontFamily: 'serif', textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleTitleSave();
+                    } else if (e.key === 'Escape') {
+                      handleTitleCancel();
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleTitleSave}
+                  className="p-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors"
+                  title="保存"
+                >
+                  <Check className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={handleTitleCancel}
+                  className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                  title="キャンセル"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 group">
+                <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-2xl" style={{ fontFamily: 'serif', textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+                  🎄 {calendar?.title || 'My Advent Calendar'} 🎄
+                </h1>
+                <button
+                  onClick={handleTitleEdit}
+                  className="opacity-0 group-hover:opacity-100 p-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all"
+                  title="タイトルを編集"
+                >
+                  <Pencil className="w-5 h-5" />
+                </button>
+              </div>
+            )}
             <Gift className="w-8 h-8 md:w-10 md:h-10 text-rose-400 animate-bounce" style={{ animationDelay: '0.2s' }} />
           </div>
+          <div className="flex items-center justify-center gap-4 mb-4">
+            {calendar && (
+              <ThemeSelector
+                calendarId={calendar.id}
+                currentTheme={currentTheme}
+                onThemeChange={(theme) => {
+                  setCurrentTheme(theme);
+                  loadScenes();
+                }}
+              />
+            )}
+          </div>
           <p className="text-lg md:text-xl text-white max-w-2xl mx-auto mb-6 drop-shadow-lg">
-            ✨ Create your own 25 Days of Magic ✨
+            ✨ 25 Days of Christmas Magic ✨
           </p>
 
           <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto">
@@ -179,10 +473,12 @@ export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, mod
           <div className="absolute -top-1 left-20 w-6 h-6 bg-white rounded-full blur-sm" />
           <div className="absolute -top-2 right-16 w-7 h-7 bg-white rounded-full blur-sm" />
           <div className="absolute -top-1 right-32 w-5 h-5 bg-white rounded-full blur-sm" />
+          {/* カレンダーグリッド: 1〜25の日付を必ず表示 */}
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 gap-4 md:gap-6 max-w-6xl mx-auto">
+            {/* 日付1〜25をWebアプリ上で直接表示（Supabaseに依存しない） */}
             {days.map((dayNumber) => {
+              // sceneはSupabaseから取得するが、dayNumberはWebアプリ上で直接生成
               const scene = getSceneForDay(dayNumber);
-              const isUnlocked = isDayUnlocked(dayNumber);
               const isToday = isDayToday(dayNumber);
 
               return (
@@ -190,12 +486,10 @@ export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, mod
                   <CalendarDay
                     dayNumber={dayNumber}
                     scene={scene}
-                    isUnlocked={isUnlocked}
+                    // ✅ すべてクリック可能に変更
+                    isUnlocked={true}
                     isToday={isToday}
                     onClick={() => {
-                      if (!isUnlocked) {
-                        return;
-                      }
                       setSelectedDay(dayNumber);
                       setShowUploadModal(true);
                     }}
@@ -204,19 +498,29 @@ export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, mod
               );
             })}
           </div>
+          {loading && (
+            <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center rounded-3xl">
+              <div className="text-center">
+                <Gift className="w-12 h-12 text-amber-400 animate-bounce mx-auto mb-4" />
+                <p className="text-slate-600 text-lg font-medium">Loading your calendar...</p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="text-center mt-8">
           <p className="text-white text-sm md:text-base drop-shadow-lg font-medium">
-            🎅 Create your own Christmas magic! 🎁
+            🎅 Merry Christmas! Open a new surprise every day! 🎁
           </p>
         </div>
       </div>
 
       {/* UploadSceneモーダル */}
       <UploadScene
+        calendarId={calendar?.id || ''}
         userId={userId}
         onSuccess={() => {
+          // ✅ Uploadが完了したら即再取得
           loadScenes();
           setShowUploadModal(false);
           setSelectedDay(null);

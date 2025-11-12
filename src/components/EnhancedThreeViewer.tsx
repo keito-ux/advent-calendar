@@ -15,6 +15,8 @@ interface EnhancedThreeViewerProps {
 function SnowParticles({ count = 200 }: { count?: number }) {
   const mesh = useRef<THREE.Points>(null);
   const particles = useRef<Float32Array>(new Float32Array(count * 3));
+  const geometryRef = useRef<THREE.BufferGeometry | null>(null);
+  const materialRef = useRef<THREE.PointsMaterial | null>(null);
 
   useEffect(() => {
     for (let i = 0; i < count * 3; i += 3) {
@@ -23,6 +25,18 @@ function SnowParticles({ count = 200 }: { count?: number }) {
       particles.current[i + 2] = (Math.random() - 0.5) * 20;
     }
   }, [count]);
+
+  useEffect(() => {
+    return () => {
+      // クリーンアップ
+      if (geometryRef.current) {
+        geometryRef.current.dispose();
+      }
+      if (materialRef.current) {
+        materialRef.current.dispose();
+      }
+    };
+  }, []);
 
   useFrame((state) => {
     if (mesh.current) {
@@ -41,7 +55,7 @@ function SnowParticles({ count = 200 }: { count?: number }) {
 
   return (
     <points ref={mesh}>
-      <bufferGeometry>
+      <bufferGeometry ref={geometryRef}>
         <bufferAttribute
           attach="attributes-position"
           count={count}
@@ -49,7 +63,7 @@ function SnowParticles({ count = 200 }: { count?: number }) {
           itemSize={3}
         />
       </bufferGeometry>
-      <pointsMaterial size={0.05} color="#ffffff" transparent opacity={0.8} />
+      <pointsMaterial ref={materialRef} size={0.05} color="#ffffff" transparent opacity={0.8} />
     </points>
   );
 }
@@ -73,6 +87,7 @@ function AnimatedModel({ url, onLoad }: { url: string; onLoad?: () => void }) {
   const { scene } = useGLTF(url);
   const meshRef = useRef<THREE.Group>(null);
   const [opacity, setOpacity] = useState(0);
+  const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Fade in animation
@@ -81,8 +96,31 @@ function AnimatedModel({ url, onLoad }: { url: string; onLoad?: () => void }) {
       onLoad?.();
     }, 100);
 
-    return () => clearTimeout(timer);
-  }, [onLoad]);
+    return () => {
+      clearTimeout(timer);
+      // クリーンアップ: geometryとmaterialをdispose
+      if (scene) {
+        scene.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            if (child.geometry) {
+              child.geometry.dispose();
+            }
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          }
+        });
+      }
+      // cancelAnimationFrame
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [scene, onLoad]);
 
   useFrame((state) => {
     if (meshRef.current) {
@@ -122,12 +160,50 @@ function CameraController({ targetPosition, targetLookAt }: { targetPosition?: [
   const { camera } = useThree();
   const targetPos = useRef(new THREE.Vector3(...(targetPosition || [0, 2, 5])));
   const targetLook = useRef(new THREE.Vector3(...(targetLookAt || [0, 0, 0])));
+  const animationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // cancelAnimationFrame
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
 
   useFrame(() => {
     camera.position.lerp(targetPos.current, 0.05);
     const lookAt = targetLook.current.clone();
     camera.lookAt(lookAt);
   });
+
+  return null;
+}
+
+// Renderer設定コンポーネント
+function RendererConfig() {
+  const { gl } = useThree();
+
+  useEffect(() => {
+    // WebGL Context Lostイベントのハンドリング
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      console.warn('WebGL Context Lost');
+    };
+
+    const handleContextRestored = () => {
+      console.log('WebGL Context Restored');
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('webglcontextlost', handleContextLost);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored);
+
+    return () => {
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+    };
+  }, [gl]);
 
   return null;
 }
@@ -140,9 +216,22 @@ export default function EnhancedThreeViewer({
   onLoad,
 }: EnhancedThreeViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // コンポーネントのクリーンアップ時にDOMからcanvasを削除
+    return () => {
+      if (containerRef.current) {
+        const canvas = containerRef.current.querySelector('canvas');
+        if (canvas && canvas.parentNode) {
+          canvas.parentNode.removeChild(canvas);
+        }
+      }
+    };
+  }, []);
 
   return (
-    <div className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative ${className}`}>
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900/80 to-navy-900/80 backdrop-blur-sm rounded-lg z-10">
           <div className="text-white text-sm animate-pulse">Loading 3D model...</div>
@@ -151,7 +240,16 @@ export default function EnhancedThreeViewer({
       <Canvas
         camera={{ position: [0, 2, 5], fov: 50 }}
         style={{ background: 'transparent' }}
+        gl={{
+          antialias: false,
+          powerPreference: 'low-power',
+          preserveDrawingBuffer: false,
+        }}
+        onCreated={({ gl }) => {
+          gl.shadowMap.enabled = false;
+        }}
       >
+        <RendererConfig />
         <Suspense fallback={null}>
           <ambientLight intensity={0.6} />
           <directionalLight position={[10, 10, 5]} intensity={1.2} color="#FFD700" />

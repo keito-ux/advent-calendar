@@ -139,7 +139,7 @@ export function HomeCalendar({ onSceneClick, modelUrl1, modelUrl2 }: HomeCalenda
 
           <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto">
             <ThreeViewer
-              modelUrl={modelUrl1}
+              modelUrl="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150859_texture.glb"
               className="w-48 h-48"
             />
             <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-2xl px-6 md:px-8 py-4 md:py-5 border-3 border-amber-400 relative">
@@ -156,7 +156,7 @@ export function HomeCalendar({ onSceneClick, modelUrl1, modelUrl2 }: HomeCalenda
               </div>
             </div>
             <ThreeViewer
-              modelUrl={modelUrl2}
+              modelUrl="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150921_texture.glb"
               className="w-48 h-48"
             />
           </div>
@@ -172,6 +172,14 @@ export function HomeCalendar({ onSceneClick, modelUrl1, modelUrl2 }: HomeCalenda
               const scene = getSceneForDay(dayNumber);
               const isUnlocked = isDayUnlocked(dayNumber);
               const isToday = isDayToday(dayNumber);
+              
+              // ✅ 15日と20日に3Dモデルを表示
+              let dayModelUrl: string | null = null;
+              if (dayNumber === 15) {
+                dayModelUrl = 'https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150859_texture.glb';
+              } else if (dayNumber === 20) {
+                dayModelUrl = 'https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150921_texture.glb';
+              }
 
               return (
                 <CalendarDay
@@ -180,6 +188,7 @@ export function HomeCalendar({ onSceneClick, modelUrl1, modelUrl2 }: HomeCalenda
                   scene={scene}
                   isUnlocked={isUnlocked}
                   isToday={isToday}
+                  modelUrl={dayModelUrl}
                   onClick={async () => {
                     const scene = getSceneForDay(dayNumber);
                     if (scene && !isUnlocked) {

@@ -1,0 +1,6 @@
+# Cloudflare Pages用の本番環境CSPヘッダー
+# GitHub Pagesの場合は、このファイルは無視されます（metaタグを使用）
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cxhpdgmlnfumkxwsyopq.supabase.co https://raw.githack.com https://raw.githubusercontent.com https://pmndrs.github.io https://*.supabase.co https://*.githubusercontent.com; font-src 'self'; connect-src 'self' blob: data: https://cxhpdgmlnfumkxwsyopq.supabase.co https://raw.githack.com https://raw.githubusercontent.com https://pmndrs.github.io https://*.supabase.co https://*.githubusercontent.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';
+
