@@ -1,33 +1,31 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabaseClient';
-import { CalendarGrid } from './components/CalendarGrid';
-import { SceneDetail } from './components/SceneDetail';
-import { ArtistProfile } from './components/ArtistProfile';
-import { UserProfile } from './components/UserProfile';
+import { HomeCalendar } from './components/HomeCalendar';
+import { MyCalendar } from './components/MyCalendar';
+import { HomeSceneDetail } from './components/HomeSceneDetail';
+import { MySceneDetail } from './components/MySceneDetail';
 import { RankingPage } from './components/RankingPage';
-import { MyCalendarPage } from './components/MyCalendarPage';
-import { TipModal } from './components/TipModal';
-import UploadScene from './components/UploadScene';
+import { UserProfile } from './components/UserProfile';
+import { Navbar } from './components/Navbar';
+import { DailyBonus } from './components/DailyBonus';
+import { My3DSpace } from './components/My3DSpace';
 import AuthPage from './components/AuthPage';
-import type { Scene, UserCalendar } from './lib/types';
+import type { AdventCalendar, UserCalendarDay } from './lib/types';
 import type { User } from '@supabase/supabase-js';
-import { Trophy, Calendar, User as UserIcon, Home } from 'lucide-react';
 
 type View =
   | { type: 'home' }
-  | { type: 'my-calendars' }
+  | { type: 'home-scene'; dayNumber: number; scene: AdventCalendar | null }
+  | { type: 'my-calendar' }
+  | { type: 'my-scene'; dayNumber: number; scene: UserCalendarDay | null }
   | { type: 'ranking' }
-  | { type: 'calendar'; calendarId: string }
-  | { type: 'scene'; dayNumber: number; sceneId: string; calendarId: string }
-  | { type: 'artist'; artistId: string }
-  | { type: 'user-profile'; userId: string }
-  | { type: 'tip'; artistId: string; artistName: string; sceneId?: string };
+  | { type: 'profile'; userId: string }
+  | { type: '3d-space' };
 
 export default function App() {
   const [view, setView] = useState<View>({ type: 'home' });
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
 
   useEffect(() => {
     // Check initial session
@@ -46,8 +44,32 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  function handleSceneClick(dayNumber: number, sceneId: string, calendarId: string) {
-    setView({ type: 'scene', dayNumber, sceneId, calendarId });
+  function handleHomeSceneClick(dayNumber: number, scene: AdventCalendar | null) {
+    setView({ type: 'home-scene', dayNumber, scene });
+  }
+
+  function handleMySceneClick(dayNumber: number, scene: UserCalendarDay | null) {
+    setView({ type: 'my-scene', dayNumber, scene });
+  }
+
+  function handleNavigate(viewType: string) {
+    if (viewType === 'home') {
+      setView({ type: 'home' });
+    } else if (viewType === 'my-calendar') {
+      if (user) {
+        setView({ type: 'my-calendar' });
+      }
+    } else if (viewType === '3d-space') {
+      if (user) {
+        setView({ type: '3d-space' });
+      }
+    } else if (viewType === 'ranking') {
+      setView({ type: 'ranking' });
+    } else if (viewType === 'profile') {
+      if (user) {
+        setView({ type: 'profile', userId: user.id });
+      }
+    }
   }
 
   function handleAuthSuccess() {
@@ -67,150 +89,75 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  // Show auth page only if user tries to access my-calendar without being logged in
+  if (!user && view.type === 'my-calendar') {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
+  const currentViewName = view.type === 'home' || view.type === 'home-scene' ? 'home' :
+                          view.type === 'my-calendar' || view.type === 'my-scene' ? 'my-calendar' :
+                          view.type === 'ranking' ? 'ranking' :
+                          view.type === 'profile' ? 'profile' :
+                          view.type === '3d-space' ? '3d-space' : 'home';
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-navy-900 to-slate-950">
-      {/* Navigation Bar */}
-      <nav className="sticky top-0 z-40 bg-gradient-to-r from-slate-900/95 via-navy-900/95 to-slate-950/95 backdrop-blur-md border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-white">🎄 Advent Calendar</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setView({ type: 'home' })}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                view.type === 'home'
-                  ? 'bg-gradient-to-r from-amber-400 to-rose-500 text-white'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-            >
-              <Home className="w-4 h-4" />
-              Home
-            </button>
-            <button
-              onClick={() => setView({ type: 'my-calendars' })}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                view.type === 'my-calendars'
-                  ? 'bg-gradient-to-r from-amber-400 to-rose-500 text-white'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              My Calendars
-            </button>
-            <button
-              onClick={() => setView({ type: 'ranking' })}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                view.type === 'ranking'
-                  ? 'bg-gradient-to-r from-amber-400 to-rose-500 text-white'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-            >
-              <Trophy className="w-4 h-4" />
-              Rankings
-            </button>
-            <button
-              onClick={() => setView({ type: 'user-profile', userId: user.id })}
-              className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"
-            >
-              <UserIcon className="w-4 h-4" />
-              Profile
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="bg-red-600/80 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </nav>
+      <Navbar
+        user={user}
+        currentView={currentViewName}
+        onNavigate={handleNavigate}
+        onSignOut={handleSignOut}
+        onSignIn={() => setView({ type: 'my-calendar' })}
+      />
 
       {/* Main Content */}
       {view.type === 'home' && (
-        <div className="p-4">
-          {selectedCalendarId ? (
-            <CalendarGrid
-              calendarId={selectedCalendarId}
-              onSceneClick={handleSceneClick}
-              modelUrl1="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150859_texture.glb"
-              modelUrl2="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150921_texture.glb"
-            />
-          ) : (
-            <div className="max-w-4xl mx-auto mt-12 text-center">
-              <h2 className="text-3xl font-bold text-white mb-4">Welcome to Advent Calendar!</h2>
-              <p className="text-white/70 mb-8">Select a calendar from "My Calendars" or create a new one to get started.</p>
-              <button
-                onClick={() => setView({ type: 'my-calendars' })}
-                className="px-6 py-3 bg-gradient-to-r from-amber-400 to-rose-500 text-white rounded-lg hover:from-amber-500 hover:to-rose-600 transition-all shadow-lg"
-              >
-                Go to My Calendars
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {view.type === 'my-calendars' && (
-        <MyCalendarPage
-          userId={user.id}
-          onCalendarSelect={(calendarId) => {
-            setSelectedCalendarId(calendarId);
-            setView({ type: 'calendar', calendarId });
-          }}
+        <HomeCalendar
+          onSceneClick={handleHomeSceneClick}
+          modelUrl1="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150859_texture.glb"
+          modelUrl2="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150921_texture.glb"
         />
       )}
 
-      {view.type === 'calendar' && (
-        <div className="p-4">
-          <CalendarGrid
-            calendarId={view.calendarId}
-            onSceneClick={handleSceneClick}
+      {view.type === 'home-scene' && (
+        <HomeSceneDetail
+          dayNumber={view.dayNumber}
+          scene={view.scene}
+          onClose={() => setView({ type: 'home' })}
+        />
+      )}
+
+      {view.type === 'my-calendar' && user && (
+        <div className="p-4 space-y-4">
+          <DailyBonus userId={user.id} />
+          <MyCalendar
+            userId={user.id}
+            onSceneClick={handleMySceneClick}
             modelUrl1="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150859_texture.glb"
             modelUrl2="https://cxhpdgmlnfumkxwsyopq.supabase.co/storage/v1/object/public/advent.pics/uploads/Pixar_style_snowy_fai_1030150921_texture.glb"
           />
         </div>
       )}
 
+      {view.type === '3d-space' && user && (
+        <My3DSpace userId={user.id} onClose={() => setView({ type: 'my-calendar' })} />
+      )}
+
+      {view.type === 'my-scene' && (
+        <MySceneDetail
+          dayNumber={view.dayNumber}
+          scene={view.scene}
+          onClose={() => setView({ type: 'my-calendar' })}
+        />
+      )}
+
       {view.type === 'ranking' && <RankingPage />}
 
-      {view.type === 'scene' && (
-        <SceneDetail
-          dayNumber={view.dayNumber}
-          sceneId={view.sceneId}
-          calendarId={view.calendarId}
-          onClose={() => setView({ type: 'calendar', calendarId: view.calendarId })}
-        />
-      )}
-
-      {view.type === 'artist' && (
-        <ArtistProfile
-          artistId={view.artistId}
-          onClose={() => setView({ type: 'home' })}
-          onTipArtist={(artistId) => setView({ type: 'tip', artistId, artistName: '' })}
-          onSceneClick={() => {}}
-        />
-      )}
-
-      {view.type === 'user-profile' && (
+      {view.type === 'profile' && user && (
         <UserProfile
           userId={view.userId}
           onClose={() => setView({ type: 'home' })}
-          onCalendarClick={(calendarId) => setView({ type: 'calendar', calendarId })}
-        />
-      )}
-
-      {view.type === 'tip' && (
-        <TipModal
-          artistId={view.artistId}
-          artistName={view.artistName}
-          sceneId={view.sceneId}
-          onClose={() => setView({ type: 'home' })}
-          onSuccess={() => setView({ type: 'home' })}
+          onCalendarClick={() => {}}
         />
       )}
     </div>

@@ -1,79 +1,54 @@
 import { useEffect, useState } from 'react';
 import { CalendarDay } from './CalendarDay';
 import { supabase } from '../lib/supabase';
-import type { UserCalendarDay } from '../lib/types';
-import { Sparkles, Snowflake, Gift, Upload } from 'lucide-react';
+import type { AdventCalendar } from '../lib/types';
+import { Sparkles, Snowflake, Gift } from 'lucide-react';
 import ThreeViewer from './ThreeViewer';
-import UploadScene from './UploadScene';
 
-interface CalendarGridProps {
-  calendarId: string;
-  onSceneClick: (dayNumber: number, sceneId: string, calendarId: string) => void;
+interface HomeCalendarProps {
+  onSceneClick: (dayNumber: number, scene: AdventCalendar | null) => void;
   modelUrl1: string;
   modelUrl2: string;
 }
 
-export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }: CalendarGridProps) {
-  const [scenes, setScenes] = useState<UserCalendarDay[]>([]);
+export function HomeCalendar({ onSceneClick, modelUrl1, modelUrl2 }: HomeCalendarProps) {
+  const [scenes, setScenes] = useState<AdventCalendar[]>([]);
   const [loading, setLoading] = useState(true);
-  const [calendarTitle, setCalendarTitle] = useState<string>('');
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   useEffect(() => {
-    loadCurrentUser();
+    loadScenes();
   }, []);
 
-  useEffect(() => {
-    if (currentUserId !== null) {
-      loadCalendar();
-    }
-  }, [calendarId, currentUserId]);
-
-  async function loadCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    setCurrentUserId(user?.id || null);
-  }
-
-  async function loadCalendar() {
+  async function loadScenes() {
     try {
-      const [calendarRes, scenesRes] = await Promise.all([
-        supabase
-          .from('user_calendars')
-          .select('*')
-          .eq('id', calendarId)
-          .single(),
-        supabase
-          .from('user_calendar_days')
-          .select('*')
-          .eq('calendar_id', calendarId)
-          .order('day_number', { ascending: true })
-      ]);
+      const { data, error } = await supabase
+        .from('advent_calendar')
+        .select('*')
+        .order('day_number', { ascending: true });
 
-      if (calendarRes.error) throw calendarRes.error;
-      if (scenesRes.error) throw scenesRes.error;
-
-      // 現在のユーザーのカレンダーの場合のみフィルタ（オプション）
-      // 公開カレンダーの場合は全員が見られる
-      const calendar = calendarRes.data;
-      setCalendarTitle(calendar.title);
-      
-      // カレンダーが現在のユーザーのものか、または公開されている場合のみ表示
-      if (currentUserId && calendar.creator_id === currentUserId) {
-        // 自分のカレンダー: すべて表示
-        setScenes(scenesRes.data || []);
-      } else if (calendar.is_public) {
-        // 公開カレンダー: すべて表示
-        setScenes(scenesRes.data || []);
-      } else {
-        // 非公開の他人のカレンダー: 空
-        setScenes([]);
-      }
+      if (error) throw error;
+      setScenes(data || []);
     } catch (error) {
-      console.error('Error loading calendar:', error);
+      console.error('Error loading scenes:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function unlockDay(dayNumber: number) {
+    try {
+      const scene = getSceneForDay(dayNumber);
+      if (scene && !scene.is_unlocked) {
+        const { error } = await supabase
+          .from('advent_calendar')
+          .update({ is_unlocked: true })
+          .eq('id', scene.id);
+
+        if (error) throw error;
+        await loadScenes();
+      }
+    } catch (error) {
+      console.error('Error unlocking day:', error);
     }
   }
 
@@ -86,10 +61,7 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
   function isDayUnlocked(dayNumber: number): boolean {
     const scene = getSceneForDay(dayNumber);
     if (!scene) return false;
-    const unlockDate = getDayUnlockDate(dayNumber);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return unlockDate.getTime() <= today.getTime();
+    return scene.is_unlocked;
   }
 
   function isDayToday(dayNumber: number): boolean {
@@ -99,7 +71,7 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
     return unlockDate.getTime() === today.getTime();
   }
 
-  function getSceneForDay(dayNumber: number): UserCalendarDay | null {
+  function getSceneForDay(dayNumber: number): AdventCalendar | null {
     return scenes.find(s => s.day_number === dayNumber) || null;
   }
 
@@ -111,7 +83,7 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <Gift className="w-12 h-12 text-amber-400 animate-bounce mx-auto mb-4" />
-          <p className="text-white text-lg">Loading calendar magic...</p>
+          <p className="text-white text-lg">Loading Christmas magic...</p>
         </div>
       </div>
     );
@@ -157,15 +129,15 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
           <div className="flex items-center justify-center gap-3 mb-4">
             <Gift className="w-8 h-8 md:w-10 md:h-10 text-amber-400 animate-bounce" />
             <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-2xl" style={{ fontFamily: 'serif', textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-              {calendarTitle || '🎄 Advent Calendar 🎄'}
+              🎄 Picture Book Advent Calendar 🎄
             </h1>
             <Gift className="w-8 h-8 md:w-10 md:h-10 text-rose-400 animate-bounce" style={{ animationDelay: '0.2s' }} />
           </div>
           <p className="text-lg md:text-xl text-white max-w-2xl mx-auto mb-6 drop-shadow-lg">
-            ✨ 25 Days of Magic ✨
+            ✨ 25 Days of Christmas Magic ✨
           </p>
 
-          <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto mb-6">
+          <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto">
             <ThreeViewer
               modelUrl={modelUrl1}
               className="w-48 h-48"
@@ -188,19 +160,6 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
               className="w-48 h-48"
             />
           </div>
-
-          <div className="flex justify-center">
-            <UploadScene 
-              calendarId={calendarId} 
-              onSuccess={loadCalendar}
-              isOpen={showUploadModal}
-              onClose={() => {
-                setShowUploadModal(false);
-                setSelectedDay(null);
-              }}
-              initialDay={selectedDay || undefined}
-            />
-          </div>
         </header>
 
         <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-8 border-3 border-white shadow-2xl relative">
@@ -215,35 +174,23 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
               const isToday = isDayToday(dayNumber);
 
               return (
-                <div key={dayNumber} className="relative">
-                  <CalendarDay
-                    dayNumber={dayNumber}
-                    scene={scene}
-                    isUnlocked={isUnlocked}
-                    isToday={isToday}
-                    onClick={() => {
-                      if (scene && isUnlocked) {
-                        onSceneClick(dayNumber, scene.id, calendarId);
-                      } else if (isUnlocked) {
-                        // 未登録の日付をクリックした場合、UploadSceneモーダルを開く
-                        setSelectedDay(dayNumber);
-                        setShowUploadModal(true);
-                      }
-                    }}
-                  />
-                  {!scene && isUnlocked && (
-                    <button
-                      onClick={() => {
-                        setSelectedDay(dayNumber);
-                        setShowUploadModal(true);
-                      }}
-                      className="absolute top-2 right-2 bg-amber-400 hover:bg-amber-500 text-white rounded-full p-2 shadow-lg transition-all z-10"
-                      title="Add scene"
-                    >
-                      <Upload className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+                <CalendarDay
+                  key={dayNumber}
+                  dayNumber={dayNumber}
+                  scene={scene}
+                  isUnlocked={isUnlocked}
+                  isToday={isToday}
+                  onClick={async () => {
+                    const scene = getSceneForDay(dayNumber);
+                    if (scene && !isUnlocked) {
+                      await unlockDay(dayNumber);
+                    }
+                    const updatedScene = getSceneForDay(dayNumber);
+                    if (updatedScene) {
+                      onSceneClick(dayNumber, updatedScene);
+                    }
+                  }}
+                />
               );
             })}
           </div>
@@ -251,10 +198,11 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
 
         <div className="text-center mt-8">
           <p className="text-white text-sm md:text-base drop-shadow-lg font-medium">
-            🎅 Open a new surprise every day! 🎁
+            🎅 Merry Christmas! Open a new surprise every day! 🎁
           </p>
         </div>
       </div>
     </div>
   );
 }
+

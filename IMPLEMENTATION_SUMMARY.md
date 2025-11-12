@@ -1,154 +1,105 @@
-# Advent Calendar アプリ フルリニューアル実装サマリー
 
-## 実装完了項目
+# 実装サマリー
 
-### 1. データベーススキーマ拡張 ✅
-- **マイグレーションファイル**: `supabase/migrations/20250101000000_add_sns_features.sql`
-  - `likes` テーブル: いいね機能
-  - `comments` テーブル: コメント機能
-  - `user_calendar_days` に `model_url` と `like_count` カラム追加
-  - `profiles` に SNSリンク（twitter_url, instagram_url, website_url, bio）追加
-  - RLSポリシーとインデックス設定
+## 修正・実装完了項目
 
-### 2. 型定義更新 ✅
-- `src/lib/types.ts` に以下を追加:
-  - `UserCalendar`, `UserCalendarDay`, `Profile`, `Like`, `Comment`
-  - `CalendarDayWithDetails` インターフェース
+### 1️⃣ UploadScene.tsx の画像アップロード失敗の修正 ✅
 
-### 3. 新規コンポーネント ✅
+**修正内容**:
+- `src/lib/supabase.ts`の`uploadImage`関数に詳細なエラーログを追加
+  - エラーコード、メッセージ、詳細情報をconsoleに表示
+  - バケット名、ファイルパス、ファイル名、ファイルサイズをログ出力
+- `src/components/UploadScene.tsx`に以下を追加:
+  - 画像/モデルアップロード時のログ出力
+  - データベース保存時のエラーログ出力
+  - 成功時のログ出力
 
-#### LikeButton (`src/components/LikeButton.tsx`)
-- いいね機能の実装
-- リアルタイムいいね数更新
-- ユーザー認証チェック
+**改善点**:
+- Supabase Storageのエラー情報が詳細にconsoleに表示される
+- デバッグが容易になった
 
-#### CommentBox (`src/components/CommentBox.tsx`)
-- コメント表示・投稿機能
-- プロフィール情報表示
-- コメント削除機能
+### 2️⃣ MyCalendar.tsx に過去作成したカレンダーを一覧表示 ✅
 
-#### RankingPage (`src/components/RankingPage.tsx`)
-- いいね数順・最新順ソート
-- トップ50の投稿を表示
-- クリエイタープロフィール表示
+**実装内容**:
+- `advent_calendar`テーブルから現在のユーザーIDでフィルタして取得
+- 各日付のSceneサムネイルを表示
+- クリックで詳細（HomeSceneDetail）を開く
 
-#### MyCalendarPage (`src/components/MyCalendarPage.tsx`)
-- ユーザーのカレンダー一覧
-- カレンダー作成・削除機能
-- シェア機能
+**追加機能**:
+- `loadAdventScenes`関数を追加して`advent_calendar`テーブルからデータを取得
+- `user_id`カラムが存在しない場合のエラーハンドリング
+- 過去のカレンダーを「Your Past Calendars」セクションに表示
 
-#### UserProfile (`src/components/UserProfile.tsx`)
-- プロフィール表示
-- SNSリンク表示（Twitter, Instagram, Website）
-- 作成したカレンダー一覧
+**マイグレーション**:
+- `supabase/migrations/20250104000000_add_user_id_to_advent_calendar.sql`を作成
+- `advent_calendar`テーブルに`user_id`カラムを追加
+- RLSポリシーを更新
 
-#### EnhancedThreeViewer (`src/components/EnhancedThreeViewer.tsx`)
-- 雪のパーティクルエフェクト
-- 光のパーティクル（Sparkles）
-- 星の背景（Stars）
-- モデルフェードインアニメーション
-- カメラアニメーション
-- 自動回転・浮遊アニメーション
+### 3️⃣ CalendarGrid.tsx で日付をタップしてシーンを新規登録 ✅
 
-### 4. 既存コンポーネント更新 ✅
+**実装内容**:
+- 日付セル（CalendarDay）をクリックしたときにUploadSceneモーダルを開く
+- 選択された`day_number`をUploadSceneに渡す
+- 未登録の日付のみ「追加」ボタン（Uploadアイコン）を表示
 
-#### App.tsx
-- 新しいビュー管理システム
-- ナビゲーションバー追加
-- ルーティング統合（Home, My Calendars, Rankings, Profile）
+**追加機能**:
+- `UploadScene`コンポーネントに`initialDay`、`isOpen`、`onClose`プロパティを追加
+- 外部からモーダルの開閉を制御できるように
+- 既存のシーンがある場合は詳細を表示、未登録の場合はUploadSceneモーダルを開く
 
-#### CalendarGrid
-- `user_calendar_days` ベースに移行
-- カレンダーIDベースの読み込み
-- UploadScene統合
+**動作**:
+- 既存の日付（登録済み）: クリックで詳細表示
+- 未登録の日付: クリックまたは「追加」ボタンでUploadSceneモーダルを開く
+- UploadSceneモーダルで選択された日付が自動的に設定される
 
-#### SceneDetail
-- `user_calendar_days` ベースに移行
-- LikeButton統合
-- CommentBox統合
-- EnhancedThreeViewer統合（3Dモデル表示時）
+## ファイル変更一覧
 
-#### UploadScene
-- 画像とGLBの両方に対応
-- モーダルUI
-- カレンダーIDベースのアップロード
+### 新規作成
+- `supabase/migrations/20250104000000_add_user_id_to_advent_calendar.sql`
 
-#### CalendarDay
-- `UserCalendarDay` 型に対応
-
-### 5. ライブラリ関数拡張 ✅
-
-#### supabase.ts
-- `uploadModel()` 関数追加（GLBアップロード対応）
-
-## デザインシステム
-
-### カラーパレット
-- **ベース**: スレート900、ネイビー900、スレート950
-- **アクセント**: アンバー400（金）、ローズ500（ピンク）
-- **白**: 白・半透明白（ガラスモーフィズム効果）
-
-### UI特徴
-- ガラスモーフィズム（backdrop-blur）
-- グラデーション背景
-- 雪のパーティクルアニメーション
-- ホバーエフェクト
-- トランジションアニメーション
+### 修正
+- `src/lib/supabase.ts` - エラーハンドリング改善
+- `src/components/UploadScene.tsx` - モーダル制御、エラーログ追加
+- `src/components/CalendarGrid.tsx` - 日付クリックでUploadSceneモーダルを開く
+- `src/components/MyCalendar.tsx` - 過去のカレンダー一覧表示
 
 ## 使用方法
 
-### 1. マイグレーション実行
+### マイグレーション実行
 ```bash
-# Supabase CLIでマイグレーションを実行
 supabase migration up
 ```
 
-### 2. 環境変数確認
-`.env` ファイルに以下が設定されていることを確認:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+### 動作確認
+1. **画像アップロード**
+   - UploadSceneで画像をアップロード
+   - エラーが発生した場合、consoleに詳細なエラー情報が表示される
 
-### 3. 開発サーバー起動
-```bash
-npm run dev
-```
+2. **過去のカレンダー表示**
+   - MyCalendarページで過去に作成した`advent_calendar`の一覧が表示される
+   - 各日付をクリックで詳細を表示
 
-## 主要機能
-
-1. **ユーザーカレンダー管理**
-   - 複数カレンダー作成可能
-   - カレンダーごとに25日分の投稿
-
-2. **投稿機能**
-   - 画像または3Dモデル（GLB）アップロード
-   - タイトル・メッセージ設定
-
-3. **SNS機能**
-   - いいね機能
-   - コメント機能
-   - ランキング表示
-
-4. **3D表示**
-   - GLBモデル表示
-   - パーティクルエフェクト
-   - アニメーション
-
-5. **プロフィール**
-   - SNSリンク設定
-   - カレンダー一覧表示
+3. **日付からシーン登録**
+   - CalendarGridで未登録の日付をクリック
+   - UploadSceneモーダルが開き、選択された日付が自動設定される
+   - 画像/モデルをアップロードして登録
 
 ## 注意事項
 
-- 既存の `advent_calendar` テーブルは使用されていません（`user_calendars` / `user_calendar_days` に移行）
-- プロフィール作成は手動で行う必要があります（初回ログイン時）
-- ストレージバケット `advent.pics` に画像とGLBモデルをアップロード
+1. **マイグレーション実行が必要**
+   - `advent_calendar`テーブルに`user_id`カラムを追加するマイグレーションを実行してください
+   - マイグレーションを実行しない場合、過去のカレンダーは表示されません
 
-## 今後の拡張案
+2. **既存データ**
+   - マイグレーション実行後、既存の`advent_calendar`レコードの`user_id`は`NULL`になります
+   - 必要に応じて既存データに`user_id`を設定してください
 
-1. プロフィール自動作成（トリガー関数）
-2. カレンダーシェア機能の強化
-3. フォロー機能
-4. 通知機能
-5. 検索機能
-6. タグ機能
+3. **エラーハンドリング**
+   - `user_id`カラムが存在しない場合、エラーメッセージがconsoleに表示されます
+   - アプリケーションは正常に動作し続けます（過去のカレンダーは表示されません）
 
+## 今後の改善案
+
+1. 既存のシーンを編集する機能
+2. 既存のシーンを再アップロードする機能
+3. 過去のカレンダーの削除機能

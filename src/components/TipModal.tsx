@@ -47,6 +47,7 @@ export function TipModal({ artistId, artistName, sceneId, onClose, onSuccess }: 
     setLoading(true);
 
     try {
+      // Note: 'tips' table may not exist in current schema
       const { error: insertError } = await supabase
         .from('tips')
         .insert({
@@ -59,13 +60,17 @@ export function TipModal({ artistId, artistName, sceneId, onClose, onSuccess }: 
           stripe_payment_id: null
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.warn('Tips table not available:', insertError.message);
+        setError('Tip feature is currently unavailable. Please try again later.');
+        return;
+      }
 
       onSuccess();
       onClose();
     } catch (err) {
       console.error('Error submitting tip:', err);
-      setError('Failed to process tip. Please try again.');
+      setError('Tip feature is currently unavailable. Please try again later.');
     } finally {
       setLoading(false);
     }

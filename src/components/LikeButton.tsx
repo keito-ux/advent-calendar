@@ -26,6 +26,8 @@ export function LikeButton({ sceneId, initialLikeCount, userId, onLikeChange }: 
     }
 
     try {
+      // Note: 'likes' table may not exist in current schema
+      // This feature is temporarily disabled
       const { data, error } = await supabase
         .from('likes')
         .select('id')
@@ -33,10 +35,16 @@ export function LikeButton({ sceneId, initialLikeCount, userId, onLikeChange }: 
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        // Table doesn't exist or RLS error - disable feature
+        console.warn('Likes table not available:', error.message);
+        setIsLiked(false);
+        return;
+      }
       setIsLiked(!!data);
     } catch (error) {
       console.error('Error checking like status:', error);
+      setIsLiked(false);
     }
   }
 
@@ -48,6 +56,7 @@ export function LikeButton({ sceneId, initialLikeCount, userId, onLikeChange }: 
 
     setLoading(true);
     try {
+      // Note: 'likes' table may not exist in current schema
       if (isLiked) {
         // Unlike
         const { error } = await supabase
@@ -56,7 +65,11 @@ export function LikeButton({ sceneId, initialLikeCount, userId, onLikeChange }: 
           .eq('scene_id', sceneId)
           .eq('user_id', userId);
 
-        if (error) throw error;
+        if (error) {
+          console.warn('Likes table not available:', error.message);
+          alert('Like feature is currently unavailable');
+          return;
+        }
         setIsLiked(false);
         setLikeCount(prev => Math.max(0, prev - 1));
         onLikeChange?.(likeCount - 1, false);
@@ -69,14 +82,18 @@ export function LikeButton({ sceneId, initialLikeCount, userId, onLikeChange }: 
             user_id: userId,
           });
 
-        if (error) throw error;
+        if (error) {
+          console.warn('Likes table not available:', error.message);
+          alert('Like feature is currently unavailable');
+          return;
+        }
         setIsLiked(true);
         setLikeCount(prev => prev + 1);
         onLikeChange?.(likeCount + 1, true);
       }
     } catch (error) {
       console.error('Error toggling like:', error);
-      alert('Failed to update like. Please try again.');
+      alert('Like feature is currently unavailable');
     } finally {
       setLoading(false);
     }

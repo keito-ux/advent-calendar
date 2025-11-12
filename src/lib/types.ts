@@ -292,6 +292,131 @@ export type Database = {
           updated_at?: string;
         };
       };
+      advent_calendar: {
+        Row: {
+          id: string;
+          day_number: number;
+          title: string;
+          image_url: string;
+          is_unlocked: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          day_number: number;
+          title?: string;
+          image_url?: string;
+          is_unlocked?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          day_number?: number;
+          title?: string;
+          image_url?: string;
+          is_unlocked?: boolean;
+          created_at?: string;
+        };
+      };
+      bookmarks: {
+        Row: {
+          id: string;
+          user_id: string;
+          calendar_user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          calendar_user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          calendar_user_id?: string;
+          created_at?: string;
+        };
+      };
+      calendar_purchases: {
+        Row: {
+          id: string;
+          user_id: string;
+          calendar_id: string;
+          day_number: number | null;
+          amount: number;
+          currency: string;
+          payment_intent_id: string | null;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          calendar_id: string;
+          day_number?: number | null;
+          amount: number;
+          currency?: string;
+          payment_intent_id?: string | null;
+          status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          calendar_id?: string;
+          day_number?: number | null;
+          amount?: number;
+          currency?: string;
+          payment_intent_id?: string | null;
+          status?: string;
+          created_at?: string;
+        };
+      };
+      user_3d_placements: {
+        Row: {
+          id: string;
+          user_id: string;
+          model_url: string;
+          position_x: number;
+          position_y: number;
+          position_z: number;
+          rotation_x: number;
+          rotation_y: number;
+          rotation_z: number;
+          scale: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          model_url: string;
+          position_x?: number;
+          position_y?: number;
+          position_z?: number;
+          rotation_x?: number;
+          rotation_y?: number;
+          rotation_z?: number;
+          scale?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          model_url?: string;
+          position_x?: number;
+          position_y?: number;
+          position_z?: number;
+          rotation_x?: number;
+          rotation_y?: number;
+          rotation_z?: number;
+          scale?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
   };
 };
@@ -305,6 +430,10 @@ export type UserCalendarDay = Database['public']['Tables']['user_calendar_days']
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type Like = Database['public']['Tables']['likes']['Row'];
 export type Comment = Database['public']['Tables']['comments']['Row'];
+export type AdventCalendar = Database['public']['Tables']['advent_calendar']['Row'];
+export type Bookmark = Database['public']['Tables']['bookmarks']['Row'];
+export type CalendarPurchase = Database['public']['Tables']['calendar_purchases']['Row'];
+export type User3DPlacement = Database['public']['Tables']['user_3d_placements']['Row'];
 
 export type Language = 'en' | 'ja' | 'uk';
 

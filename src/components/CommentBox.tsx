@@ -20,13 +20,18 @@ export function CommentBox({ sceneId, userId }: CommentBoxProps) {
 
   async function loadComments() {
     try {
+      // Note: 'comments' table may not exist in current schema
       const { data, error } = await supabase
         .from('comments')
         .select('*')
         .eq('scene_id', sceneId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.warn('Comments table not available:', error.message);
+        setComments([]);
+        return;
+      }
 
       // Load profiles for each comment
       const commentsWithProfiles = await Promise.all(
@@ -44,6 +49,7 @@ export function CommentBox({ sceneId, userId }: CommentBoxProps) {
       setComments(commentsWithProfiles);
     } catch (error) {
       console.error('Error loading comments:', error);
+      setComments([]);
     }
   }
 
@@ -53,6 +59,7 @@ export function CommentBox({ sceneId, userId }: CommentBoxProps) {
 
     setLoading(true);
     try {
+      // Note: 'comments' table may not exist in current schema
       const { error } = await supabase
         .from('comments')
         .insert({
@@ -61,13 +68,17 @@ export function CommentBox({ sceneId, userId }: CommentBoxProps) {
           content: newComment.trim(),
         });
 
-      if (error) throw error;
+      if (error) {
+        console.warn('Comments table not available:', error.message);
+        alert('Comment feature is currently unavailable');
+        return;
+      }
 
       setNewComment('');
       await loadComments();
     } catch (error) {
       console.error('Error posting comment:', error);
-      alert('Failed to post comment. Please try again.');
+      alert('Comment feature is currently unavailable');
     } finally {
       setLoading(false);
     }
@@ -78,17 +89,22 @@ export function CommentBox({ sceneId, userId }: CommentBoxProps) {
     if (!confirm('Delete this comment?')) return;
 
     try {
+      // Note: 'comments' table may not exist in current schema
       const { error } = await supabase
         .from('comments')
         .delete()
         .eq('id', commentId)
         .eq('user_id', userId);
 
-      if (error) throw error;
+      if (error) {
+        console.warn('Comments table not available:', error.message);
+        alert('Comment feature is currently unavailable');
+        return;
+      }
       await loadComments();
     } catch (error) {
       console.error('Error deleting comment:', error);
-      alert('Failed to delete comment.');
+      alert('Comment feature is currently unavailable');
     }
   }
 

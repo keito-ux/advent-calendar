@@ -2,76 +2,58 @@ import { useEffect, useState } from 'react';
 import { CalendarDay } from './CalendarDay';
 import { supabase } from '../lib/supabase';
 import type { UserCalendarDay } from '../lib/types';
-import { Sparkles, Snowflake, Gift, Upload } from 'lucide-react';
+import { Sparkles, Snowflake, Gift } from 'lucide-react';
 import ThreeViewer from './ThreeViewer';
 import UploadScene from './UploadScene';
 
-interface CalendarGridProps {
-  calendarId: string;
-  onSceneClick: (dayNumber: number, sceneId: string, calendarId: string) => void;
+interface MyCalendarProps {
+  userId: string;
+  onSceneClick: (dayNumber: number, scene: UserCalendarDay | null) => void;
   modelUrl1: string;
   modelUrl2: string;
 }
 
-export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }: CalendarGridProps) {
+export function MyCalendar({ userId, onSceneClick: _onSceneClick, modelUrl1, modelUrl2 }: MyCalendarProps) {
   const [scenes, setScenes] = useState<UserCalendarDay[]>([]);
   const [loading, setLoading] = useState(true);
-  const [calendarTitle, setCalendarTitle] = useState<string>('');
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   useEffect(() => {
-    loadCurrentUser();
-  }, []);
+    loadScenes();
+  }, [userId]);
 
-  useEffect(() => {
-    if (currentUserId !== null) {
-      loadCalendar();
-    }
-  }, [calendarId, currentUserId]);
-
-  async function loadCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    setCurrentUserId(user?.id || null);
-  }
-
-  async function loadCalendar() {
+  // user_calendar_daysからデータを取得（calendar_id経由）
+  async function loadScenes() {
+    setLoading(true);
     try {
-      const [calendarRes, scenesRes] = await Promise.all([
-        supabase
-          .from('user_calendars')
-          .select('*')
-          .eq('id', calendarId)
-          .single(),
-        supabase
-          .from('user_calendar_days')
-          .select('*')
-          .eq('calendar_id', calendarId)
-          .order('day_number', { ascending: true })
-      ]);
+      // まずユーザーのカレンダーを取得
+      const { data: calendars, error: calendarsError } = await supabase
+        .from('user_calendars')
+        .select('id')
+        .eq('creator_id', userId)
+        .limit(1);
 
-      if (calendarRes.error) throw calendarRes.error;
-      if (scenesRes.error) throw scenesRes.error;
+      if (calendarsError) throw calendarsError;
 
-      // 現在のユーザーのカレンダーの場合のみフィルタ（オプション）
-      // 公開カレンダーの場合は全員が見られる
-      const calendar = calendarRes.data;
-      setCalendarTitle(calendar.title);
-      
-      // カレンダーが現在のユーザーのものか、または公開されている場合のみ表示
-      if (currentUserId && calendar.creator_id === currentUserId) {
-        // 自分のカレンダー: すべて表示
-        setScenes(scenesRes.data || []);
-      } else if (calendar.is_public) {
-        // 公開カレンダー: すべて表示
-        setScenes(scenesRes.data || []);
-      } else {
-        // 非公開の他人のカレンダー: 空
+      if (!calendars || calendars.length === 0) {
         setScenes([]);
+        return;
       }
+
+      const calendarId = calendars[0].id;
+
+      // カレンダーの日付データを取得
+      const { data, error } = await supabase
+        .from('user_calendar_days')
+        .select('*')
+        .eq('calendar_id', calendarId)
+        .order('day_number', { ascending: true });
+
+      if (error) throw error;
+      setScenes(data || []);
     } catch (error) {
-      console.error('Error loading calendar:', error);
+      console.error('Error loading scenes:', error);
     } finally {
       setLoading(false);
     }
@@ -85,7 +67,7 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
 
   function isDayUnlocked(dayNumber: number): boolean {
     const scene = getSceneForDay(dayNumber);
-    if (!scene) return false;
+    if (scene) return true; // データがあればアンロック済み
     const unlockDate = getDayUnlockDate(dayNumber);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -104,14 +86,14 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
   }
 
   const days = Array.from({ length: 25 }, (_, i) => i + 1);
-  const unlockedCount = days.filter(day => isDayUnlocked(day)).length;
+  const postedCount = scenes.length;
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <Gift className="w-12 h-12 text-amber-400 animate-bounce mx-auto mb-4" />
-          <p className="text-white text-lg">Loading calendar magic...</p>
+          <p className="text-white text-lg">Loading your calendar...</p>
         </div>
       </div>
     );
@@ -119,6 +101,7 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
 
   return (
     <div className="relative overflow-hidden">
+      {/* 雪のアニメーション */}
       <div className="absolute inset-0 pointer-events-none">
         {[...Array(120)].map((_, i) => {
           const left = Math.random() * 100;
@@ -144,6 +127,7 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
         })}
       </div>
 
+      {/* 雪の結晶 */}
       <div className="absolute inset-0 opacity-30">
         <Snowflake className="absolute top-10 left-10 w-8 h-8 text-white animate-pulse" />
         <Snowflake className="absolute top-20 right-20 w-6 h-6 text-white animate-pulse" style={{ animationDelay: '0.5s' }} />
@@ -157,15 +141,15 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
           <div className="flex items-center justify-center gap-3 mb-4">
             <Gift className="w-8 h-8 md:w-10 md:h-10 text-amber-400 animate-bounce" />
             <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-2xl" style={{ fontFamily: 'serif', textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-              {calendarTitle || '🎄 Advent Calendar 🎄'}
+              🎄 My Advent Calendar 🎄
             </h1>
             <Gift className="w-8 h-8 md:w-10 md:h-10 text-rose-400 animate-bounce" style={{ animationDelay: '0.2s' }} />
           </div>
           <p className="text-lg md:text-xl text-white max-w-2xl mx-auto mb-6 drop-shadow-lg">
-            ✨ 25 Days of Magic ✨
+            ✨ Create your own 25 Days of Magic ✨
           </p>
 
-          <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto mb-6">
+          <div className="flex items-center justify-between gap-8 max-w-6xl mx-auto">
             <ThreeViewer
               modelUrl={modelUrl1}
               className="w-48 h-48"
@@ -178,27 +162,14 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
               <div className="flex items-center gap-3">
                 <Sparkles className="w-6 h-6 md:w-8 md:h-8 text-amber-600 animate-pulse" />
                 <div className="text-left">
-                  <p className="text-sm md:text-base text-slate-600 font-medium">Days Unlocked</p>
-                  <p className="text-2xl md:text-3xl font-bold text-amber-700">{unlockedCount} / 25</p>
+                  <p className="text-sm md:text-base text-slate-600 font-medium">Days Posted</p>
+                  <p className="text-2xl md:text-3xl font-bold text-amber-700">{postedCount} / 25</p>
                 </div>
               </div>
             </div>
             <ThreeViewer
               modelUrl={modelUrl2}
               className="w-48 h-48"
-            />
-          </div>
-
-          <div className="flex justify-center">
-            <UploadScene 
-              calendarId={calendarId} 
-              onSuccess={loadCalendar}
-              isOpen={showUploadModal}
-              onClose={() => {
-                setShowUploadModal(false);
-                setSelectedDay(null);
-              }}
-              initialDay={selectedDay || undefined}
             />
           </div>
         </header>
@@ -222,27 +193,13 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
                     isUnlocked={isUnlocked}
                     isToday={isToday}
                     onClick={() => {
-                      if (scene && isUnlocked) {
-                        onSceneClick(dayNumber, scene.id, calendarId);
-                      } else if (isUnlocked) {
-                        // 未登録の日付をクリックした場合、UploadSceneモーダルを開く
-                        setSelectedDay(dayNumber);
-                        setShowUploadModal(true);
+                      if (!isUnlocked) {
+                        return;
                       }
+                      setSelectedDay(dayNumber);
+                      setShowUploadModal(true);
                     }}
                   />
-                  {!scene && isUnlocked && (
-                    <button
-                      onClick={() => {
-                        setSelectedDay(dayNumber);
-                        setShowUploadModal(true);
-                      }}
-                      className="absolute top-2 right-2 bg-amber-400 hover:bg-amber-500 text-white rounded-full p-2 shadow-lg transition-all z-10"
-                      title="Add scene"
-                    >
-                      <Upload className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
               );
             })}
@@ -251,10 +208,27 @@ export function CalendarGrid({ calendarId, onSceneClick, modelUrl1, modelUrl2 }:
 
         <div className="text-center mt-8">
           <p className="text-white text-sm md:text-base drop-shadow-lg font-medium">
-            🎅 Open a new surprise every day! 🎁
+            🎅 Create your own Christmas magic! 🎁
           </p>
         </div>
       </div>
+
+      {/* UploadSceneモーダル */}
+      <UploadScene
+        userId={userId}
+        onSuccess={() => {
+          loadScenes();
+          setShowUploadModal(false);
+          setSelectedDay(null);
+        }}
+        isOpen={showUploadModal}
+        onClose={() => {
+          setShowUploadModal(false);
+          setSelectedDay(null);
+        }}
+        initialDay={selectedDay || undefined}
+        existingScene={selectedDay ? getSceneForDay(selectedDay) : null}
+      />
     </div>
   );
 }

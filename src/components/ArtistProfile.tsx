@@ -22,6 +22,8 @@ export function ArtistProfile({ artistId, onClose, onTipArtist, onSceneClick }: 
 
   async function loadArtistProfile() {
     try {
+      // Note: 'artists', 'scenes', 'tips' tables may not exist in current schema
+      // These features are temporarily disabled
       const [artistRes, scenesRes, tipsRes] = await Promise.all([
         supabase
           .from('artists')
@@ -40,15 +42,31 @@ export function ArtistProfile({ artistId, onClose, onTipArtist, onSceneClick }: 
           .order('created_at', { ascending: false })
       ]);
 
-      if (artistRes.error) throw artistRes.error;
-      if (scenesRes.error) throw scenesRes.error;
-      if (tipsRes.error) throw tipsRes.error;
+      if (artistRes.error) {
+        console.warn('Artists table not available:', artistRes.error.message);
+        setArtist(null);
+      } else {
+        setArtist(artistRes.data);
+      }
 
-      setArtist(artistRes.data);
-      setScenes(scenesRes.data || []);
-      setTips(tipsRes.data || []);
+      if (scenesRes.error) {
+        console.warn('Scenes table not available:', scenesRes.error.message);
+        setScenes([]);
+      } else {
+        setScenes(scenesRes.data || []);
+      }
+
+      if (tipsRes.error) {
+        console.warn('Tips table not available:', tipsRes.error.message);
+        setTips([]);
+      } else {
+        setTips(tipsRes.data || []);
+      }
     } catch (error) {
       console.error('Error loading artist profile:', error);
+      setArtist(null);
+      setScenes([]);
+      setTips([]);
     } finally {
       setLoading(false);
     }
